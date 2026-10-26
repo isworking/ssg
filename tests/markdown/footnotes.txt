@@ -1,0 +1,13 @@
+First ref[1] and again[1], then [2] and inline[3].
+
+Unused[^missing] stays text.
+
+----------------------------------------
+
+[1] Note A with a link <http://x.com>.
+
+    Second paragraph of A.
+
+[2] Nested in a quote, refs [1] too.
+
+[3] Inline note here.

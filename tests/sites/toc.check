@@ -1,0 +1,39 @@
+build --quiet
+status 0
+same index.md '# Title
+
+- [One](#one)
+  - [One.a](#onea)
+    - [One.a.i](#oneai)
+- [Two code \& em](#two-code--em)
+
+## One
+
+### One.a
+
+#### One.a.i
+
+## Two `code` & *em*
+
+Inline: before
+
+- [One](#one)
+  - [One.a](#onea)
+    - [One.a.i](#oneai)
+- [Two code \& em](#two-code--em)
+
+after.
+
+Escaped: {{toc}}
+'
+contains index.html '<nav><ul>'
+contains index.html '<a href="#one">One</a>'
+same none/index.md '# Only a title
+
+
+
+text
+'
+contains jump/index.md '- [A](#a)
+  - [deep](#deep)
+- [B](#b)'

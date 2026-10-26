@@ -1,0 +1,17 @@
+build --quiet
+status 0
+contains index.html '<title>A &lt;b&gt;&amp;&lt;/b&gt;'
+contains index.html 'content="He said '
+contains index.html "content='it&#39;s'"
+contains index.html 'class="{{missing}}"'
+contains index.html '<article><p>some words here</p>'
+contains index.html '<p>/ 3 1 1970-01-01</p>'
+# {{if}} in the skeleton
+printf '<title></title>\n{{if description}}<meta content="{{description}}">{{else}}<!-- none -->{{end}}\n{{if not draft}}live{{end}}\n<main>\n</main>\n' >"$SITE/skeleton.html"
+printf -- '---\ndescription: "d"\n---\nx\n' >"$SITE/b.md"
+build --quiet
+status 0
+contains b/index.html '<meta content="d">'
+contains b/index.html 'live'
+omits b/index.html '<!-- none -->'
+contains index.html '<meta content="He said'

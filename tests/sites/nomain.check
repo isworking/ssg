@@ -1,0 +1,3 @@
+build --quiet
+status 1
+err_has 'skeleton.html: HTML skeleton has no <main'

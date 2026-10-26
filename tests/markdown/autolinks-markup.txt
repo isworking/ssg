@@ -1,0 +1,27 @@
+Markup characters inside a URL stay part of it: <www.a.com/~user/>
+<https://a.com/path?x=a~b> <https://en.wikipedia.org/wiki/A_(b)_*c>* and
+<https://a.com/_x>_ y and <https://a.com/==m==> c and <https://a.com/`x`> y.
+
+Around markup: <https://a.com/em> <www.b.com> <www.c.com> <https://d.com>
+(<www.e.com>).
+
+Escapes and entities: <https://a.com/a_b> <https://a.com/*x>*
+<https://a.com/?a=1&b=2> <www.f.com/he><lp <www.g.com>.< end. Entity-like tails
+(GFM spec): <www.google.com/search?q=commonmark>&hl; and
+<www.google.com/search?q=commonmark&hl=en>.
+
+A footnote after a URL: <https://a.com/note>[1] and <https://b.com/x>[2].
+
+In link text: https://a.com/x </dest> and [see <www.h.com>] unresolved.
+
+Only lowercase: Www.cap.com WWW.X.COM HTTPS://UP.com Http://a.com <www.ok.com>
+<https://ok.com>
+
+Unicode and escaped: <https://例え.jp/ü> and <https://café.fr/menu> and
+<http://x.com/a\b> and <http://ok.com/a> and mail@ü.example.com and <a@b.co>.
+
+----------------------------------------
+
+[1] The note.
+
+[2] inline

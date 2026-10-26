@@ -1,0 +1,8 @@
+build --quiet
+status 0
+contains index.md 'shown'
+contains index.md 'footer for Home'
+contains index.md 'hello {{greeting}} {{unknown}}'
+contains off/index.md 'hidden'
+omits off/index.md 'shown'
+contains override/index.md '/custom/'

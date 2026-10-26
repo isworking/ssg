@@ -1,0 +1,37 @@
+# .assetignore: POSIX classes, BOM, malformed classes, no exponential backtracking.
+printf 'dist = "dist"\ntemplates = "t"\nskeleton = "s.html"\n' >"$SITE/site.toml"
+printf '<main></main>\n' >"$SITE/s.html"
+for f in aZ.txt ab.txt 1.log x.log b.txt 'x[' bom.txt sp1 'sp2 ' q.dat Q9.dat; do echo x >"$SITE/$f"; done
+long=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+echo x >"$SITE/$long"
+mkdir -p "$SITE/d/e"
+echo x >"$SITE/d/e/f.txt"
+echo x >"$SITE/d/g.txt"
+{
+  printf '\357\273\277bom.txt\n'
+  printf 'a[[:upper:]].txt\n'
+  printf '[[:digit:]]*.log\n'
+  printf '[[:bogus:]].txt\n'
+  printf 'x[\n'
+  printf '*a*a*a*a*a*a*a*a*a*a*a*a*b\n'
+  printf 'sp1   \n'
+  printf 'sp2\\ \n'
+  printf '[^q[:digit:]]*.dat\n'
+  printf 'd/**/[[:alpha:]].txt\n'
+} >"$SITE/.assetignore"
+build --quiet
+status 0
+lacks bom.txt
+lacks aZ.txt
+has ab.txt
+lacks 1.log
+has x.log
+has b.txt
+has 'x['
+has "$long"
+lacks sp1
+lacks 'sp2 '
+has q.dat
+lacks Q9.dat
+lacks d/e/f.txt
+lacks d/g.txt

@@ -1,0 +1,45 @@
+# Cyclic keys stay as written; cycles mixed with {{if}} must not blow up exponentially.
+printf 'dist = "dist"\ntemplates = "t"\nskeleton = "s.html"\n' >"$SITE/site.toml"
+printf '<main></main>\n' >"$SITE/s.html"
+mkdir -p "$SITE/t"
+printf -- '---\na: "{{b}}"\nb: "x {{a}}"\nself: "s {{self}}"\n---\n[{{a}}] [{{b}}] [{{self}}]\n' >"$SITE/index.md"
+# k_i = {{k0}}{{if k_i+1}}{{end}}{{if k_i+1}}{{end}}: was 2^n expansions.
+{
+  echo '---'
+  i=0
+  while [ $i -lt 40 ]; do
+    echo "k$i: \"{{k0}}{{if k$((i + 1))}}{{end}}{{if k$((i + 1))}}{{end}}\""
+    i=$((i + 1))
+  done
+  echo 'k40: "x"'
+  echo '---'
+  echo '[{{k0}}] [{{k39}}]'
+} >"$SITE/chain.md"
+# Every key tests itself and every later key.
+{
+  echo '---'
+  i=0
+  while [ $i -lt 40 ]; do
+    line="k$i: \""
+    j=$i
+    while [ $j -lt 40 ]; do line="$line{{if k$j}}y{{end}}{{if not k$j}}n{{end}}"; j=$((j + 1)); done
+    echo "$line\""
+    i=$((i + 1))
+  done
+  echo '---'
+  echo '{{if k0}}ok{{end}}'
+} >"$SITE/dense.md"
+# p_i includes p_i+1 twice: was 2^n includes (and file reads).
+i=0
+while [ $i -lt 30 ]; do
+  printf -- '---\nv%d: "1"\n---\n{{if x}}{{end}}{{include "p%d"}}{{include "p%d"}}' $i $((i + 1)) $((i + 1)) >"$SITE/t/p$i.md"
+  i=$((i + 1))
+done
+printf '{{if v3}}{{end}}' >"$SITE/t/p30.md"
+printf '[{{include "p0"}}]\n' >"$SITE/fanout.md"
+build --quiet
+status 0
+contains fanout/index.md '[]'
+contains index.md '[x x x {{a}}] [x x x {{b}}] [s s {{self}}]'
+contains chain/index.md '[{{k0}}] [{{k0}}]'
+contains dense/index.md 'ok'

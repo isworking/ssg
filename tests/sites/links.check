@@ -1,0 +1,15 @@
+build --quiet --check-links
+status 0
+err_has 'index.md: broken link missing/'
+err_has 'index.md: broken link ../x'
+err_has 'a.md: broken link ../nope.png'
+err_lacks 'broken link a/'
+err_lacks 'broken link /a/'
+err_lacks 'img.png'
+err_lacks 'sub/'
+err_lacks 'https'
+err_lacks 'mailto'
+err_lacks '#top'
+err_has 'index.html and index.md both write index.html'
+build --quiet
+err_lacks 'broken link'

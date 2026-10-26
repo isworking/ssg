@@ -8,26 +8,42 @@
 #include <string_view>
 
 inline std::string read_file(const std::filesystem::path& path) {
+  std::error_code ec;
+  if (std::filesystem::is_directory(path, ec)) {
+    throw std::runtime_error("cannot read " + path.string() + ": is a directory");
+  }
   std::ifstream in(path, std::ios::binary);
   if (!in) {
     throw std::runtime_error("cannot read file: " + path.string());
   }
   std::ostringstream ss;
   ss << in.rdbuf();
+  if (in.bad()) throw std::runtime_error("error reading file: " + path.string());
   return ss.str();
 }
 
+// Replaces whatever is at `path`; a symlink there is removed, never written through.
 inline void write_file(const std::filesystem::path& path, std::string_view data) {
   std::filesystem::create_directories(path.parent_path());
+  if (std::filesystem::is_symlink(std::filesystem::symlink_status(path))) {
+    std::filesystem::remove(path);
+  }
   std::ofstream out(path, std::ios::binary);
   if (!out) {
     throw std::runtime_error("cannot write file: " + path.string());
   }
   out.write(data.data(), static_cast<std::streamsize>(data.size()));
+  out.flush();
+  out.close();
+  if (!out) throw std::runtime_error("error writing file (disk full?): " + path.string());
 }
 
 inline bool starts_with(std::string_view s, std::string_view p) {
   return s.size() >= p.size() && s.substr(0, p.size()) == p;
+}
+
+inline bool ends_with(std::string_view s, std::string_view p) {
+  return s.size() >= p.size() && s.substr(s.size() - p.size()) == p;
 }
 
 inline std::string_view ltrim(std::string_view s) {
@@ -55,6 +71,34 @@ inline std::string html_escape(std::string_view s) {
     }
   }
   return out;
+}
+
+// html_escape plus ', for attribute values in either quote style.
+inline std::string html_escape_attr(std::string_view s) {
+  std::string out;
+  out.reserve(s.size());
+  for (char c : s) {
+    if (c == '\'') out += "&#39;";
+    else out += html_escape(std::string_view(&c, 1));
+  }
+  return out;
+}
+
+inline std::string replace_all(std::string_view s, std::string_view from, std::string_view to) {
+  if (from.empty()) return std::string(s);
+  std::string out;
+  size_t i = 0;
+  for (size_t at; (at = s.find(from, i)) != std::string_view::npos; i = at + from.size()) {
+    out.append(s.substr(i, at - i));
+    out.append(to);
+  }
+  out.append(s.substr(i));
+  return out;
+}
+
+// Relative path with forward slashes, the form ignore patterns and URLs use.
+inline std::string generic_rel(const std::filesystem::path& p, const std::filesystem::path& base) {
+  return p.lexically_relative(base).generic_string();
 }
 
 inline bool iequals(std::string_view a, std::string_view b) {

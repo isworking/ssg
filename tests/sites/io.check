@@ -1,0 +1,37 @@
+# Read and write failures are errors, never silently empty output.
+minimal_site
+echo hi >"$SITE/index.md"
+# a short write (here: over the file size limit, like a full disk) fails the build
+python3 -c "print('word ' * 200000)" >"$SITE/big.md"
+(trap '' XFSZ; ulimit -f 100; "$SSG" --quiet "$SITE" 2>"$ERR"); rc=$?
+status 1
+err_has 'error writing file'
+rm "$SITE/big.md"
+# render: a directory isn't a file; a closed stdout is an error
+"$SSG" render "$SITE" >/dev/null 2>"$ERR"; rc=$?
+status 1
+err_has 'is a directory'
+echo hi >"$TMP/r.md"
+"$SSG" render "$TMP/r.md" >&- 2>"$ERR"; rc=$?
+status 1
+err_has 'error writing output'
+# a template that is a directory
+mkdir -p "$SITE/templates/base.md"
+printf '{{extend "base"}}\nhello\n' >"$SITE/two.md"
+build --quiet
+status 1
+err_has 'is a directory'
+rm -r "$SITE/templates/base.md" "$SITE/two.md"
+
+# SOURCE_DATE_EPOCH out of range or garbage: warned about and ignored
+echo 'd {{build_date}}' >"$SITE/index.md"
+today=$(date -u +%Y-%m-%d)
+for v in 99999999999999999 -5 253402300800 abc; do
+  SOURCE_DATE_EPOCH=$v "$SSG" --quiet "$SITE" 2>"$ERR"; rc=$?
+  status 0
+  err_has "ignoring SOURCE_DATE_EPOCH=$v"
+  contains index.md "d $today"
+done
+SOURCE_DATE_EPOCH=253402300799 "$SSG" --quiet "$SITE" 2>"$ERR"
+err_lacks 'SOURCE_DATE_EPOCH'
+contains index.md 'd 9999-12-31'

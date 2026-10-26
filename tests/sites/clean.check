@@ -1,0 +1,21 @@
+mkdir -p "$SITE/content" "$SITE/out"
+printf 'dist = "../out"\ntemplates = "t"\nskeleton = "s.html"\n' >"$SITE/content/site.toml"
+printf '<main></main>\n' >"$SITE/content/s.html"
+echo '# hi' >"$SITE/content/index.md"
+echo keep >"$SITE/out/precious.txt"
+"$SSG" "$SITE/content" 2>"$ERR"
+rc=$?
+status 0
+err_has 'not cleaning'
+[ -f "$SITE/out/precious.txt" ] && ok || bad "outside dist was cleaned"
+[ -f "$SITE/out/index.html" ] && ok || bad "outside dist not built"
+# clean = false keeps stale files
+printf 'dist = "dist"\ntemplates = "t"\nskeleton = "s.html"\nclean = false\n' >"$SITE/content/site.toml"
+mkdir -p "$SITE/content/dist"; echo stale >"$SITE/content/dist/stale.txt"
+"$SSG" --quiet "$SITE/content" 2>"$ERR"
+[ -f "$SITE/content/dist/stale.txt" ] && ok || bad "clean = false still cleaned"
+# dist symlinked elsewhere: not cleaned through the link
+printf 'dist = "dist"\ntemplates = "t"\nskeleton = "s.html"\n' >"$SITE/content/site.toml"
+rm -rf "$SITE/content/dist"; ln -s "$SITE/out" "$SITE/content/dist"
+"$SSG" --quiet "$SITE/content" 2>"$ERR"
+[ -f "$SITE/out/precious.txt" ] && ok || bad "symlinked dist was cleaned"

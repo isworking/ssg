@@ -1,0 +1,28 @@
+Hello World
+===========
+
+Hello World
+-----------
+
+Hello, World!
+-------------
+
+### Custom
+
+Setext
+------
+
+hello-world
+===========
+
+Ünïcödé — Tëst
+==============
+
+code and link <x>
+=================
+
+Hello World
+===========
+
+Explicit dup
+------------

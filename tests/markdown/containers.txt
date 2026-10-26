@@ -1,0 +1,21 @@
+[WARNING] Be careful
+  This is a warning with a ref link </ref-target>.
+
+  [NOTE]
+    Outer with more colons.
+
+    [TIP]
+      Inner tip.
+
+[INFO]
+      :::
+
+[NOTE]
+  GitHub style note.
+
+[CAUTION]
+  Lowercase caution
+
+  - list
+
+> [!BOGUS] plain quote

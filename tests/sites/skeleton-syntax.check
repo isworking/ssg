@@ -1,0 +1,30 @@
+# Template syntax in the skeleton: escapes and {{if}} structure, checked like templates.
+minimal_site
+echo hi >"$SITE/index.md"
+printf '<html><head><title></title></head><body>\\{{literal}} <main></main></body></html>\n' >"$SITE/skeleton.html"
+build --quiet
+status 0
+contains index.html '<body>{{literal}} <main>'
+# an unclosed {{if}} is an error, not a truncated page
+printf '<html><head><title></title></head><body>{{if draft_banner}}<b>draft</b>\n<main></main></body></html>\n' >"$SITE/skeleton.html"
+build --quiet
+status 1
+err_has 'skeleton.html: missing {{end}} for {{if draft_banner}}'
+printf '<title></title>{{if not x}}a{{else}}b{{else}}c{{end}}<main></main>\n' >"$SITE/skeleton.html"
+build --quiet
+status 1
+err_has 'skeleton.html: second {{else}} in one {{if}}'
+printf '<title></title>{{end}}<main></main>\n' >"$SITE/skeleton.html"
+build --quiet
+status 1
+err_has 'skeleton.html: {{end}} without {{if}}'
+printf '<title></title>{{else}}<main></main>\n' >"$SITE/skeleton.html"
+build --quiet
+status 1
+err_has 'skeleton.html: {{else}} without {{if}}'
+# balanced, but split by <title>'s inner text (which pages with a title replace)
+printf '<title>{{if x}}</title>{{end}}<main></main>\n' >"$SITE/skeleton.html"
+printf -- '---\ntitle: "T"\n---\nhi\n' >"$SITE/index.md"
+build --quiet
+status 0
+contains index.html '<title>T</title><main>'

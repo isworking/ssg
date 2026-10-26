@@ -1,0 +1,14 @@
+# comment
+*.log
+!keep.log
+build/
+/root-only.txt
+docs/*.tmp
+**/cache/**
+a/**/z.txt
+\#hash.txt
+\!bang.txt
+trailing.txt   
+private/
+!private/allowed.txt
+drafts/*.md

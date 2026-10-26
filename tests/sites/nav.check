@@ -1,0 +1,31 @@
+build --quiet
+status 0
+same blog/index.md 'Posts:
+
+- [A post](/blog/a/)
+- [B post](/blog/b/)
+- [Series](/blog/series/)
+- [D \[short\]](/blog/d/)
+- [C post](/blog/c/)
+- [f](/blog/f/)
+'
+contains index.md '- [Blog](/blog/)'
+contains index.md '- [Foo file](/foo)'
+contains index.md '- [Foo dir](/foo/)'
+omits index.md 'orphan'
+contains blog/a/index.html '<p class="nav">{{prev_url}}|/blog/b/|/blog/</p>'
+contains blog/b/index.html '<p class="nav">/blog/a/|/blog/series/|/blog/</p>'
+contains blog/f/index.html '<p class="nav">/blog/c/|{{next_url}}|/blog/</p>'
+contains blog/series/index.md 's - [Part](/blog/series/part/)'
+contains blog/series/part/index.html '|/blog/series/</p>'
+contains index.html '<p class="nav">{{prev_url}}|{{next_url}}|{{parent_url}}</p>'
+same foo.md 'foo /foo foo.md
+'
+same foo/index.md 'foodir /foo/ foo/index.md
+'
+contains orphan/x/index.md 'x {{parent_url}}'
+lacks blog/e
+build --quiet --drafts
+status 0
+contains blog/index.md '- [E post](/blog/e/)'
+has blog/e/index.html

@@ -1,0 +1,26 @@
+"$SSG" --version >"$ERR" 2>&1; rc=$?
+status 0
+err_has 'ssg 0.2.0'
+"$SSG" --bogus x >"$ERR" 2>&1; rc=$?
+status 2
+err_has 'usage:'
+"$SSG" >"$ERR" 2>&1; rc=$?
+status 2
+"$SSG" --help >"$ERR" 2>&1; rc=$?
+status 0
+printf '# Hi *there*\n\n<div onclick="x()">raw</div>\n' | "$SSG" render --strict - >"$ERR" 2>&1; rc=$?
+status 0
+err_has '<h1>Hi <em>there</em></h1>'
+err_has '<div onclick="x()">raw</div>'
+printf '# Hi\n' >"$SITE/in.md"
+"$SSG" render "$SITE/in.md" >"$ERR" 2>&1; rc=$?
+status 0
+err_has 'id="hi"'
+"$SSG" render --text "$SITE/in.md" >"$ERR" 2>&1; rc=$?
+status 0
+err_lacks '<h1'
+"$SSG" render --bogus - </dev/null >"$ERR" 2>&1; rc=$?
+status 2
+"$SSG" "$SITE/does-not-exist" >"$ERR" 2>&1; rc=$?
+status 1
+err_has 'ssg: missing site.toml'

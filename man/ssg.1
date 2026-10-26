@@ -1,0 +1,560 @@
+.Dd October 26, 2026
+.Dt SSG 1
+.Os
+.Sh NAME
+.Nm ssg
+.Nd build a static site of HTML, markdown and plain-text pages
+.Sh SYNOPSIS
+.Nm
+.Op Fl \-drafts
+.Op Fl \-check-links
+.Op Fl \-quiet
+.Ar content-dir
+.Nm
+.Cm render
+.Op Fl \-strict
+.Op Fl \-text
+.Op Fl \-no-html
+.Op Fl \-scripts | \-no-scripts
+.Op Fl \-no-extensions
+.Ar file | Fl
+.Nm
+.Fl \-help | \-version
+.Sh DESCRIPTION
+In its first form,
+.Nm
+builds the site in
+.Ar content-dir ,
+which must contain a
+.Pa site.toml .
+Every markdown page becomes three files in the dist directory:
+.Pa .html
+(the page in the HTML skeleton),
+.Pa .md
+(templates resolved, frontmatter removed) and
+.Pa .txt
+(wrapped plain text).
+Every other file is copied as is.
+The content directory format, templates and output layout are described in
+.Xr ssg 5 .
+.Pp
+A build runs in this order:
+.Bl -enum -offset indent
+.It
+Read
+.Pa site.toml .
+Relative paths in it are relative to
+.Ar content-dir .
+.It
+Refuse an unsafe dist directory (see
+.Sx DIAGNOSTICS ) .
+Nothing is written before this check.
+.It
+Load and check the skeleton.
+.It
+Walk
+.Ar content-dir
+top-down, in byte order of file names.
+Files ending in
+.Pa .md
+(case-sensitive) are pages; other regular files are assets.
+Skipped: names starting with
+.Sq \&.
+(except directories named
+.Pa .well-known ) ,
+the dist and templates directories, the skeleton,
+.Pa site.toml
+at the top level, paths matched by
+.Pa .assetignore
+files or the
+.Ic ignore
+key, directories that contain a
+.Pa .git
+entry (unless
+.Ic nested_repos
+is true), and the contents of symbolic links to directories.
+.It
+Empty the dist directory if
+.Ic clean
+is true and
+.Nm
+created it (it holds a
+.Pa .ssg-dist
+marker).
+.It
+Copy assets.
+.It
+Render pages: a first pass over all pages to resolve frontmatter and templates, then the
+real render with navigation keys
+.Pq Ic children , parent_* , prev_* , next_*
+filled in.
+.It
+Write
+.Pa sitemap.xml
+if
+.Ic base_url
+is set.
+.It
+With
+.Fl \-check-links ,
+check local links.
+.It
+Print a summary line to standard error.
+.El
+.Pp
+An error stops the build at once.
+Assets and pages written before it stay in dist.
+.Pp
+In its second form,
+.Nm
+.Cm render
+converts one markdown
+.Ar file ,
+or standard input when the argument is
+.Fl ,
+to HTML (or text) on standard output.
+Frontmatter is not parsed, templates are not evaluated and
+.Pa site.toml
+is not read: a
+.Li ---
+block renders as markdown.
+Options are the built-in defaults: raw HTML on and sanitized, extensions,
+heading ids and bare autolinks on, text wrapped at 80 columns.
+.Ss Build options
+Options and
+.Ar content-dir
+may come in any order.
+There is no
+.Fl \-
+terminator: write a directory whose name starts with
+.Sq -
+as
+.Pa ./-dir ,
+and one named
+.Pa render
+as
+.Pa ./render .
+.Bl -tag -width "--check-links"
+.It Fl \-drafts
+Also build pages whose
+.Ic draft
+key is true.
+Without it, a page whose own frontmatter sets a true
+.Ic draft
+is not rendered at all (so a broken template in a draft does not fail the build), and a
+page made a draft by a template is dropped after the first pass.
+Drafts that are not built do not count when deciding between
+.Pa foo.md
+and
+.Pa foo/index.md ;
+with
+.Fl \-drafts
+they do, so a draft
+.Pa foo/index.md
+moves
+.Pa foo.md
+from
+.Pa /foo/
+to
+.Pa /foo .
+.It Fl \-check-links
+After the build, warn about every
+.Li href
+or
+.Li src
+attribute in a page's HTML output (skeleton included) that points at nothing in dist.
+See
+.Sx Link checking .
+Does not change the exit status.
+.It Fl \-quiet , Fl q
+No summary line and no notes.
+Warnings and errors still print.
+.El
+.Ss Render options
+Options are applied left to right, so a later one overrides an earlier one:
+.Li --strict --no-html
+escapes raw HTML,
+.Li --no-html --strict
+does not.
+.Bl -tag -width "--no-extensions"
+.It Fl \-strict
+Plain CommonMark 0.31.2: raw HTML and scripts pass through unchanged, no extensions,
+no heading ids, no bare autolinks.
+The same as
+.Fl \-scripts \-no-extensions
+plus heading ids and autolinks off.
+.It Fl \-text
+Write plain text instead of HTML, as in the
+.Pa .txt
+output, wrapped at 80 columns.
+.It Fl \-no-html
+Escape raw HTML so it shows as text.
+.It Fl \-scripts
+Let
+.Li <script>
+and similar elements,
+.Li on*
+event attributes and
+.Li javascript: ,
+.Li vbscript: ,
+.Li file:
+and non-image
+.Li data:
+URLs through.
+.It Fl \-no-scripts
+Escape those elements, drop those attributes and neutralize those URLs.
+This is the default, so the flag only undoes an earlier
+.Fl \-scripts
+or
+.Fl \-strict .
+.It Fl \-no-extensions
+CommonMark syntax only: no tables, strikethrough, task lists, footnotes, definition lists,
+containers, alerts, marks, heading attributes or bare autolinks.
+Heading ids stay on and raw HTML is still sanitized.
+.El
+.Pp
+The width of
+.Fl \-text
+output and the heading ids cannot be set separately here; a site sets them in the
+.Ic [markdown]
+table of
+.Pa site.toml .
+.Ss Other options
+Recognised only as the first argument; elsewhere they are unknown options.
+.Bl -tag -width "--version"
+.It Fl \-help , Fl h
+Print usage and a summary of the options to standard output.
+.It Fl \-version
+Print
+.Dq ssg 0.2.0
+to standard output.
+Later arguments are ignored.
+.El
+.Ss Link checking
+For each page,
+.Fl \-check-links
+reads
+.Li href
+and
+.Li src
+values (quoted, unquoted, or with blanks around
+.Sq = )
+in real tags only: escaped text, HTML comments and the contents of
+.Li <script>
+and
+.Li <style>
+are not scanned.
+Copied
+.Pa .html
+assets are not scanned.
+A value is skipped if it is empty, starts with
+.Sq #
+or
+.Sq // ,
+or has a scheme
+.Pq a Sq \&:
+before any
+.Sq / ,
+.Sq \&?
+or
+.Sq # .
+Otherwise the query and fragment are cut, basic entities and
+.Li %XX
+escapes are decoded, and the path is resolved against the page URL.
+It exists if dist has, for
+.Pa /a/ ,
+the file
+.Pa a/index.html ;
+for
+.Pa /a ,
+the file
+.Pa a ,
+.Pa a/index.html
+or
+.Pa a.html .
+A path that climbs above the site root is broken, and so is
+.Pa .ssg-dist .
+Each broken link is reported once per page.
+.Sh ENVIRONMENT
+.Bl -tag -width Ds
+.It Ev SOURCE_DATE_EPOCH
+Seconds since 1970-01-01 UTC, used for the
+.Ic build_date
+key instead of the current time.
+With it set, the same input builds byte-identical output (apart from the summary line).
+It must be a decimal integer from 0 to 253402300799 (9999-12-31T23:59:59Z); anything else
+is ignored with a warning and the current time is used.
+.El
+.Pp
+No other environment variables are read.
+.Sh FILES
+Paths other than
+.Pa site.toml
+are set in
+.Pa site.toml ;
+the names below are the usual ones.
+.Bl -tag -width Ds
+.It Pa content-dir/site.toml
+Site configuration.
+Required.
+.It Pa content-dir/skeleton.html
+The HTML page every page is placed in.
+.It Pa content-dir/templates/
+Templates for
+.Li {{extend}}
+and
+.Li {{include}} .
+May be missing until a page uses one.
+.It Pa .assetignore
+In any directory: gitignore-style patterns for files not to publish.
+.It Pa dist/
+Output.
+.It Pa dist/.ssg-dist
+Marker written when
+.Nm
+owns dist: dist was missing, empty or already marked.
+Only a marked dist is emptied.
+It is published with the site.
+.It Pa dist/sitemap.xml
+Written when
+.Ic base_url
+is set, unless the content directory has its own.
+.El
+.Sh EXIT STATUS
+.Bl -tag -width Ds -compact
+.It 0
+Success, including builds that printed warnings.
+.It 1
+An error: configuration, template, unsafe dist, or file I/O.
+.It 2
+Bad usage; the usage text is printed to standard error.
+.El
+.Sh EXAMPLES
+Build a site and preview it:
+.Bd -literal -offset indent
+$ ssg mysite
+ssg: built 12 pages, copied 4 files in 9 ms
+$ python3 -m http.server -d mysite/dist
+.Ed
+.Pp
+Reproducible CI build, with a builder checked out into
+.Pa ./builder
+inside the content directory:
+.Bd -literal -offset indent
+$ SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) builder/build/ssg .
+ssg: note: skipping builder/ (a nested git checkout; set nested_repos = true to build it)
+ssg: built 12 pages, copied 4 files in 9 ms
+.Ed
+.Pp
+Preview drafts and look for broken links:
+.Bd -literal -offset indent
+$ ssg --drafts --check-links mysite
+ssg: warning: guide/a.md: broken link ../setup/
+ssg: built 13 pages, copied 4 files in 11 ms (1 warning)
+.Ed
+.Pp
+Render one file, or standard input:
+.Bd -literal -offset indent
+$ ssg render README.md > readme.html
+$ printf '# Hi\en\enSome *text*.\en' | ssg render --text -
+Hi
+==
+
+Some text.
+.Ed
+.Pp
+Check how strict CommonMark would render a file:
+.Dl $ ssg render --strict notes.md
+.Sh DIAGNOSTICS
+Everything except
+.Cm render
+output and
+.Fl \-help
+and
+.Fl \-version
+goes to standard error.
+Errors are
+.Dq ssg: Ar message ,
+with the source file at fault, relative to
+.Ar content-dir ,
+in front where there is one:
+.Bd -literal -offset indent
+ssg: guide/a.md: missing template "post" (looked for /srv/site/templates/post.md)
+.Ed
+.Pp
+Warnings
+.Pq Dq ssg: warning: ...
+and notes
+.Pq Dq ssg: note: ...
+do not change the exit status.
+The summary line counts the warnings printed during the build; the
+.Pa site.toml
+warnings come before it and are not counted.
+In the messages below,
+.Ar src
+is a full path to the file being evaluated.
+.Ss Usage (exit 2)
+.Bl -tag -width Ds
+.It Li unknown option Ar opt
+Includes
+.Fl \-
+and options of the other mode.
+.It Li one content dir only
+.It Li render takes one input
+.It Li render needs a file or -
+.El
+.Ss site.toml (exit 1)
+.Bl -tag -width Ds
+.It Li missing site.toml in Ar dir
+.It Li site.toml must set dist, templates, and skeleton
+.It Li site.toml: Ns Ar N : Ar message
+A syntax or type error on line
+.Ar N ,
+for example
+.Li \(aqclean\(aq must be a boolean ,
+.Li duplicate key \(aqdist\(aq ,
+.Li dotted keys are not supported ,
+.Li only integers are supported ,
+.Li \(aqtext_width\(aq must be between 0 and 100000 .
+See
+.Xr ssg 5
+for the TOML subset.
+.It Li warning: site.toml: Ns Ar N : Li unknown key \(aq Ns Ar k Ns Li \(aq
+Also
+.Li unknown key \(aq Ns Ar k Ns Li \(aq in [markdown]
+and
+.Li unknown table [ Ns Ar t Ns Li \&] .
+Keys inside an unknown table are ignored without further warnings.
+.El
+.Ss Dist (exit 1, nothing written)
+.Bl -tag -width Ds
+.It Li dist ( Ns Ar path Ns Li \&) must not be the content dir or contain it
+.It Li dist ( Ns Ar path Ns Li \&) must not be or contain the templates dir
+.It Li dist ( Ns Ar path Ns Li \&) must not contain the skeleton
+.It Li dist ( Ns Ar path Ns Li \&) must not be inside a hidden dir ( Ns Ar part Ns Li \&)
+Only the parts of dist's path below what it shares with the content directory are checked.
+.El
+.Ss Skeleton (exit 1)
+Prefixed with the skeleton's path relative to
+.Ar content-dir .
+.Bl -tag -width Ds
+.It Li missing HTML skeleton: Ar path
+Not prefixed.
+.It Li HTML skeleton has no <main tag
+Also
+.Li has a malformed <main tag
+and
+.Li has no </main> tag .
+Not checked when the skeleton contains
+.Li {{content}} .
+.It Li missing {{end}} for {{if Ar key Ns Li }}
+Also
+.Li {{end}} without {{if}} ,
+.Li {{else}} without {{if}} ,
+.Li second {{else}} in one {{if}} .
+.El
+.Ss Pages and templates (exit 1)
+Prefixed with the page's path relative to
+.Ar content-dir .
+.Bl -tag -width Ds
+.It Li frontmatter line Ar N Ns Li : expected key: value, got: Ar line
+Line 1 is the opening
+.Li --- .
+In a template's frontmatter, the template's path comes first.
+.It Li unclosed frontmatter (missing closing ---)
+.It Li missing template \(dq Ns Ar name Ns Li \(dq (looked for Ar path Ns Li \&)
+For an
+.Li {{include}} ,
+.Li in Ar src
+follows.
+.It Li bad template path \(dq Ns Ar name Ns Li \(dq in Ar src Li (must be relative to the templates dir, without \(dq..\(dq)
+.It Li cyclic {{extend}} in Ar src
+.It Li cyclic {{include \(dq Ns Ar name Ns Li \(dq}} in Ar src Li (in include Ar path Ns Li \&)
+.It Li {{extend}} inside included template Ar path Li in Ar src
+.It Li missing {{end}} for {{if Ar key Ns Li }} in Ar src
+Also
+.Li {{end}} without {{if}} ,
+.Li {{else}} without {{if}} ,
+.Li second {{else}} in one {{if}} ,
+each followed by
+.Li in Ar src .
+.It Li {{if}} nested too deeply in Ar src
+More than 256 levels.
+.It Li template expansion nested more than 64 levels deep in Ar src
+Keys and includes nested more than 64 levels.
+.It Li template expansion larger than 64 MiB in Ar src
+.El
+.Ss Files (exit 1)
+.Bl -tag -width Ds
+.It Li cannot read file: Ar path
+.It Li cannot read Ar path Ns Li : is a directory
+.It Li error reading file: Ar path
+.It Li cannot write file: Ar path
+.It Li error writing file (disk full?): Ar path
+.It Li error writing output
+.Cm render
+could not write standard output.
+.El
+.Pp
+Other file system failures are reported with the C++ library's message.
+.Ss Build warnings
+.Bl -tag -width Ds
+.It Li not cleaning Ar path Ns Li : it wasn't created by ssg (no .ssg-dist); delete it once by hand
+dist is not empty and has no marker, for example output of an older
+.Nm .
+It is built over, never emptied, until it is deleted by hand.
+Also
+.Li not cleaning Ar path Ns Li : not a plain directory
+when dist is a symbolic link or a file.
+Neither appears with
+.Li clean = false .
+.It Ar a Li and Ar b Li both write Ar out Li (the latter wins)
+Two sources produce the same output file, for example an asset
+.Pa index.html
+and the page
+.Pa index.md .
+Pages are written after assets, so the page wins.
+.It Li sitemap.xml exists in the content dir; not generating one
+.It Li ignoring SOURCE_DATE_EPOCH= Ns Ar value Li (want seconds from 0 to 253402300799); using the current time
+.It Ar page Ns Li : broken link Ar link
+From
+.Fl \-check-links .
+.Ar link
+is the value from the page, decoded, without query or fragment.
+.El
+.Ss Notes
+.Bl -tag -width Ds
+.It Li note: skipping Ar dir Ns Li / (a nested git checkout; set nested_repos = true to build it)
+.Ar dir
+contains a
+.Pa .git
+file or directory.
+Not shown with
+.Fl \-quiet ,
+not counted as a warning.
+.It Li built Ar N Li pages, copied Ar M Li files in Ar T Li ms ( Ns Ar K Li warnings)
+The summary line.
+The part in parentheses only appears when there were warnings.
+.El
+.Sh SEE ALSO
+.Xr ssg 5
+.Pp
+In the source tree:
+.Pa docs/cli.md ,
+.Pa docs/configuration.md ,
+.Pa docs/templates.md ,
+.Pa docs/markdown.md ,
+.Pa docs/getting-started.md .
+.Sh STANDARDS
+.Cm render
+.Fl \-strict
+passes all 652 examples of the CommonMark 0.31.2 specification.
+.Sh CAVEATS
+A dist directory made by an
+.Nm
+older than the
+.Pa .ssg-dist
+marker is never emptied; delete it once.
+.Pp
+.Pa .ssg-dist
+is deployed with the site unless the deploy step excludes it.

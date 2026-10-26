@@ -1,0 +1,29 @@
+Create a processor: Registers
+=============================
+
+- Flip-flops
+- Register files
+  - Read ports
+  - Write ports
+
+Flip-flops
+----------
+
+One bit of state.
+
+Register files
+--------------
+
+### Read ports
+
+Two of them.
+
+### Write ports
+
+One.
+
+----------------------------------------
+
+Previous: Let's start </create-processor/lets-start/> This is the latest post.
+
+Back to Create a processor </create-processor/>. About 1 min read.

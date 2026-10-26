@@ -1,0 +1,8 @@
+# site.toml may start with a UTF-8 BOM (Windows editors add one).
+printf '\357\273\277dist = "dist"\ntemplates = "t"\nskeleton = "s.html"\nbase_url = "x"\nbogus = 1\n' >"$SITE/site.toml"
+printf '<main></main>\n' >"$SITE/s.html"
+echo hi >"$SITE/index.md"
+build --quiet
+status 0
+has index.html
+err_has 'site.toml:5: unknown key'

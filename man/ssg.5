@@ -1,0 +1,872 @@
+.Dd October 26, 2026
+.Dt SSG 5
+.Os
+.Sh NAME
+.Nm ssg
+.Nd content directory format for ssg(1)
+.Sh DESCRIPTION
+A content directory holds a
+.Pa site.toml ,
+an HTML skeleton, an optional templates directory, markdown pages and any other files.
+.Xr ssg 1
+turns each page into
+.Pa .html ,
+.Pa .md
+and
+.Pa .txt
+files in the dist directory and copies everything else.
+.Bd -literal -offset indent
+site/
+  site.toml          configuration
+  skeleton.html      HTML around every page
+  templates/         for {{extend}} and {{include}}
+    base.md
+    partials/back.md
+  .assetignore       files not to publish
+  index.md           -> /
+  about.md           -> /about/
+  guide/index.md     -> /guide/
+  guide/setup.md     -> /guide/setup/
+  style.css          copied as is
+.Ed
+.Sh SITE.TOML
+.Bd -literal -offset indent
+dist = "dist"                  # required
+templates = "templates"        # required
+skeleton = "skeleton.html"     # required
+base_url = "https://example.com"
+clean = true
+nested_repos = false
+ignore = ["*.psd", "drafts/"]
+
+[markdown]
+html = true
+scripts = false
+heading_ids = true
+autolinks = true
+extensions = true
+text_width = 80
+.Ed
+.Pp
+Relative paths are relative to the content directory.
+.Bl -tag -width Ds
+.It Ic dist No (string, required)
+Output directory.
+It must not be the content directory or contain it, must not contain the templates
+directory or the skeleton, and none of its path components below the part it shares with
+the content directory may start with
+.Sq \&. .
+It may be outside the content directory.
+.It Ic templates No (string, required)
+Templates directory.
+It may be missing until a page uses
+.Li {{extend}}
+or
+.Li {{include}} .
+Nothing in it is published.
+.It Ic skeleton No (string, required)
+The HTML skeleton; see
+.Sx SKELETON .
+Not published.
+.It Ic base_url No (string)
+Site origin, such as
+.Li https://example.com .
+Trailing slashes are removed.
+When set,
+.Pa sitemap.xml
+is written; see
+.Sx SITEMAP .
+.It Ic clean No (boolean, default true)
+Empty dist before building, but only if
+.Xr ssg 1
+owns it: it holds the
+.Pa .ssg-dist
+marker, which a build writes into a dist that is missing, empty or already marked.
+A non-empty dist without the marker is built over with a warning.
+.It Ic nested_repos No (boolean, default false)
+Also build subdirectories that contain a
+.Pa .git
+file or directory.
+By default they are skipped with a note, so a tool checked out inside the site (for
+example by CI) is not published.
+.It Ic ignore No (array of strings)
+Patterns in
+.Pa .assetignore
+syntax, relative to the content directory.
+They come before every
+.Pa .assetignore
+rule, so those can override them.
+.El
+.Pp
+The
+.Ic [markdown]
+table:
+.Bl -tag -width Ds
+.It Ic html No (boolean, default true)
+Pass raw HTML through.
+False escapes it, so it shows as text.
+.It Ic scripts No (boolean, default false)
+With
+.Ic html
+on, let
+.Li <script> ,
+.Li <iframe> ,
+.Li <object> ,
+.Li <embed> ,
+.Li <style>
+and similar elements,
+.Li on*
+attributes and
+.Li javascript: ,
+.Li vbscript: ,
+.Li file:
+and non-image
+.Li data:
+URLs through.
+False escapes those elements, drops those attributes and any raw HTML attribute holding such
+a URL, and turns such URLs in markdown links and images into
+.Li href="#"
+or
+.Li src="" .
+HTML comments are removed.
+.It Ic heading_ids No (boolean, default true)
+Give every heading a GitHub-style id, deduplicated with
+.Li -1 ,
+.Li -2 ,
+\&...
+suffixes, unless it sets one with
+.Li {#id} .
+.It Ic autolinks No (boolean, default true)
+GFM bare links:
+.Li www.example.com ,
+.Li https://example.com ,
+.Li user@example.com .
+Needs
+.Ic extensions .
+.It Ic extensions No (boolean, default true)
+Everything beyond CommonMark; see
+.Sx MARKDOWN .
+False gives strict CommonMark syntax.
+.It Ic text_width No (integer 0 to 100000, default 80)
+Wrap column of the
+.Pa .txt
+output.
+0 disables wrapping.
+.El
+.Pp
+Unknown keys and tables are warnings, not errors.
+A key's type must match: a string where a boolean is expected is an error.
+.Ss TOML subset
+Supported:
+.Li #
+comments, blank lines,
+.Li [table]
+headers, bare keys
+.Pq Li A-Za-z0-9_-
+and quoted keys,
+.Li \(dqbasic\(dq
+strings with the escapes
+.Li \e\(dq \e\e \en \et \er \eb \ef \euXXXX \eUXXXXXXXX ,
+.Li \(aqliteral\(aq
+strings,
+.Li true ,
+.Li false ,
+integers (optional sign,
+.Sq _
+separators), and arrays of strings, which may span lines and end with a comma.
+A leading UTF-8 BOM and CRLF line endings are accepted.
+.Pp
+Not supported, each an error: dotted keys, floats, dates, inline tables, arrays of tables,
+multi-line strings, arrays of anything but strings.
+Duplicate keys and tables are errors.
+.Sh PUBLISHING
+The content directory is walked top-down.
+.Bl -bullet
+.It
+Files whose names end in
+.Pa .md
+are pages.
+The match is case-sensitive:
+.Pa NOTES.MD
+is copied as a file.
+.It
+Every other regular file is copied to the same path in dist.
+Symbolic links to files are copied as files; symbolic links to directories are not
+followed.
+.It
+Names starting with
+.Sq \&.
+are never published, at any depth, except directories named
+.Pa .well-known .
+Hidden files inside
+.Pa .well-known
+are still skipped.
+This covers
+.Pa .git ,
+.Pa .github ,
+.Pa .env
+and the
+.Pa .assetignore
+files themselves.
+.It
+Never published: the dist and templates directories, the skeleton, and
+.Pa site.toml
+at the top level.
+.It
+A directory that contains a
+.Pa .git
+entry is skipped unless
+.Ic nested_repos
+is true.
+.It
+Paths matched by
+.Pa .assetignore
+or
+.Ic ignore
+are skipped, pages included.
+.El
+.Sh ASSETIGNORE
+A
+.Pa .assetignore
+file may sit in any directory.
+Its patterns follow
+.Xr gitignore 5
+exactly and are relative to that directory:
+.Bl -bullet
+.It
+Blank lines and lines starting with
+.Sq #
+are ignored;
+.Li \e#
+starts a pattern with
+.Sq # .
+.It
+.Sq \&!
+re-includes what an earlier pattern excluded;
+.Li \e!
+is a literal
+.Sq \&! .
+A file cannot be re-included when a parent directory is excluded.
+.It
+A trailing
+.Sq /
+matches directories only.
+.It
+A
+.Sq /
+at the start or in the middle anchors the pattern to the file's directory; otherwise it
+matches a name at any depth below it.
+.It
+.Sq *
+and
+.Sq \&?
+do not match
+.Sq / .
+.Li [a-z] ,
+.Li [!a-z] ,
+.Li [^a-z]
+and the ASCII classes
+.Li [[:alpha:]] ,
+.Li [[:digit:]] ,
+etc. match one character.
+.Li **/ ,
+.Li /**
+and
+.Li /**/
+cross directories.
+.Sq \e
+escapes the next character.
+.It
+Trailing spaces are removed unless escaped with
+.Sq \e .
+.It
+Matching is case-sensitive.
+A malformed pattern (an unterminated
+.Sq \&[ ,
+an unknown
+.Li [:name:] ,
+a trailing lone
+.Sq \e )
+never matches.
+.El
+.Pp
+Later rules win.
+.Ic ignore
+patterns come first, then each directory's
+.Pa .assetignore ,
+parents before children.
+.Bd -literal -offset indent
+# .assetignore for a site deployed with Cloudflare Workers
+worker.js
+wrangler.jsonc
+builder/
+.Ed
+.Sh OUTPUT
+.Bl -column "dir/foo/index.md" "dir/foo/index.{html,md,txt}" "/dir/foo/" -offset indent
+.It Sy Source Ta Sy Output Ta Sy URL
+.It Pa index.md Ta Pa index.{html,md,txt} Ta Pa /
+.It Pa foo.md Ta Pa foo/index.{html,md,txt} Ta Pa /foo/
+.It Pa dir/index.md Ta Pa dir/index.{html,md,txt} Ta Pa /dir/
+.It Pa dir/foo.md Ta Pa dir/foo/index.{html,md,txt} Ta Pa /dir/foo/
+.El
+.Pp
+When both
+.Pa foo.md
+and
+.Pa foo/index.md
+exist,
+.Pa foo.md
+is published as
+.Pa foo.{html,md,txt}
+with the URL
+.Pa /foo .
+Drafts that are not built do not count.
+In URLs, bytes other than
+.Li A-Za-z0-9-._~/
+are percent-encoded.
+.Pp
+.Pa .html
+is the skeleton with the rendered page in it.
+.Pa .md
+is the page after templates, includes and the table of contents are resolved, with the
+frontmatter removed and leading blank lines dropped.
+.Pa .txt
+is plain text wrapped at
+.Ic text_width .
+.Pp
+dist also gets
+.Pa .ssg-dist ,
+a marker that lets later builds empty it, and
+.Pa sitemap.xml
+when
+.Ic base_url
+is set.
+If two sources write the same file (an asset
+.Pa index.html
+next to
+.Pa index.md ,
+say), the page wins and a warning is printed.
+.Sh FRONTMATTER
+A page or template may start with a block of keys:
+.Bd -literal -offset indent
+---
+title: "Setting up"          # a comment
+date: 2024-05-01
+order: 2
+color: #fff
+quote: 'it''s'
+empty:
+---
+.Ed
+.Pp
+The block starts when the first line is
+.Li ---
+(blanks around it allowed, after an optional UTF-8 BOM) and ends at the next
+.Li ---
+line; a missing end is an error.
+Inside, each line is blank, a
+.Li #
+comment, or
+.Li key: value .
+Keys use
+.Li A-Za-z0-9_.- .
+Values are strings:
+.Bl -tag -width Ds
+.It Li \(dqdouble\(dq
+Everything between the first and the last
+.Sq \(dq ,
+verbatim: no escapes, so
+.Li \(dq$a \eneq b$\(dq
+and
+.Li \(dqC:\enew\(dq
+survive.
+A
+.Li # comment
+may follow the closing quote.
+.It Li \(aqsingle\(aq
+Literal;
+.Li \(aq\(aq
+is a quote.
+A comment may follow.
+.It bare
+Trimmed.
+A
+.Sq #
+preceded by a blank starts a comment, so
+.Li #fff
+is kept.
+.Li key:
+alone is the empty string.
+.El
+.Pp
+A later key replaces an earlier one.
+Line endings may be LF, CRLF or CR.
+Values may contain template syntax; it is evaluated like the body.
+.Pp
+Without a
+.Li ---
+line, the leading lines of the form
+.Li key: \(dqvalue\(dq
+(double quotes, ending the line, no comments) are read as keys, up to the first blank or
+other line.
+This older form exists for compatibility.
+.Sh TEMPLATE SYNTAX
+Tags are written
+.Li {{ ... }} ;
+blanks and tabs inside the braces are allowed.
+Key names use
+.Li A-Za-z0-9_.- ;
+.Li else
+and
+.Li end
+are reserved.
+.Bl -tag -width Ds
+.It Li {{key}}
+The key's value.
+An undefined key stays as written, with inner blanks removed
+.Pq Li {{ toc }} No becomes Li {{toc}} .
+.It Li {{extend \(dqname\(dq}}
+Place this file's body in template
+.Ar name
+as its
+.Li {{content}} .
+Only as the first thing in a page or template body (leading blank lines allowed), once;
+its line ending goes with it.
+Anywhere else it is left as written.
+.It Li {{include \(dqname\(dq}}
+Insert template
+.Ar name
+here.
+.It Li {{if key}} ... {{else}} ... {{end}}
+Keep the first part if
+.Ar key
+is true, the
+.Li {{else}}
+part (optional) otherwise.
+.It Li {{if not key}}
+The same, negated.
+.It Li \e{{
+A literal
+.Li {{ .
+.El
+.Pp
+Text that starts with
+.Li {{
+but is none of these
+.Pq Li {{ foo bar }} , {{}} , {{a:1}}
+is left as written.
+Template syntax is evaluated everywhere in the page, code blocks and code spans included;
+write
+.Li \e{{
+there to show braces.
+.Pp
+A template
+.Ar name
+is a path relative to the templates directory, with
+.Pa .md
+added unless it ends in
+.Pa .md .
+Absolute paths,
+.Li ..
+components and an empty
+.Li {{include \(dq\(dq}}
+are errors; an empty
+.Li {{extend \(dq\(dq}}
+is dropped silently and the page is built with no template.
+.Pp
+A key is true when it is defined and its value, trimmed, is not empty and not
+.Li false ,
+.Li 0 ,
+.Li no
+or
+.Li off
+in any case.
+An
+.Li {{if}} ,
+.Li {{else}}
+or
+.Li {{end}}
+alone on its line (blanks allowed) removes the whole line.
+Branches not taken are not evaluated, so an include in one need not exist.
+.Li {{if}}
+nests up to 256 deep.
+.Ss Evaluation
+.Bl -enum
+.It
+The page's frontmatter keys are read and its body kept.
+.It
+For each
+.Li {{extend}}
+in the chain, the template's frontmatter keys are added where not already set, and the
+template's body, with
+.Li {{content}}
+set to the body so far, becomes the new body.
+.It
+Built-in keys are added where not already set.
+.It
+Every key's value is evaluated, then the body: keys are filled, conditionals and includes
+resolved.
+Conditionals therefore see the merged keys: a template can test a page key and a page a
+template key.
+.El
+.Pp
+Priority is page, then inner template, then outer template, then built-in keys; a page can
+override even
+.Ic url .
+A key that refers to itself through other keys stays as written at the point of the cycle.
+Nesting of keys and includes is limited to 64 levels and a result to 64 MiB.
+.Pp
+An included template's frontmatter keys are defaults for that include only; the
+including file's keys win.
+One trailing newline is removed from it, so
+.Li Hi {{include \(dqname\(dq}}!
+stays on one line.
+Includes may nest, but may not
+.Li {{extend}}
+and may not form a cycle.
+.Sh BUILT-IN KEYS
+.Bl -tag -width Ds
+.It Ic url
+The page's URL:
+.Li / ,
+.Li /guide/ ,
+.Li /guide/setup/ .
+.It Ic path
+Source path relative to the content directory:
+.Li guide/setup.md .
+.It Ic build_date
+.Li YYYY-MM-DD ,
+UTC, from
+.Ev SOURCE_DATE_EPOCH
+when it is set.
+.It Ic word_count
+Words in the page's plain text, template text included.
+A word is a run of non-space bytes with at least one ASCII letter or digit or non-ASCII
+byte.
+.It Ic reading_time
+Minutes at 200 words a minute, rounded up, at least 1.
+.It Ic toc
+Table of contents; see
+.Sx TABLE OF CONTENTS .
+Empty, and so false, when the page has no level 2 to 6 heading.
+.It Ic children
+The child pages as a markdown list, one
+.Li - [Title](/url/)
+line each, sorted; empty when there are none.
+.It Ic parent_url , Ic parent_title
+The parent page.
+.It Ic prev_url , Ic prev_title , Ic next_url , Ic next_title
+The previous and next sibling, in sorted order.
+.El
+.Pp
+The parent and sibling keys are not defined when there is no such page, so they stay as
+written; test them with
+.Li {{if prev_url}} .
+While the first pass runs, all navigation keys,
+.Ic toc ,
+.Ic word_count
+and
+.Ic reading_time
+are empty.
+.Ss Keys with a meaning
+.Bl -tag -width Ds
+.It Ic title
+Fills the skeleton's
+.Li <title> .
+.It Ic nav_title , Ic page_title , Ic title
+The first that is not blank is the page's title in
+.Ic children ,
+.Ic parent_title ,
+.Ic prev_title
+and
+.Ic next_title .
+Without any, the file name without
+.Pa .md ,
+or the directory name for an
+.Pa index.md .
+.It Ic order
+A number; see
+.Sx NAVIGATION .
+.It Ic date
+Sort key, compared as a string, so use
+.Li YYYY-MM-DD .
+Also the sitemap's
+.Li <lastmod> .
+.It Ic draft
+When true, the page is built only with
+.Fl \-drafts .
+It may be set by a template.
+.It Ic sitemap
+When defined and false, the page is left out of
+.Pa sitemap.xml .
+.It Ic content
+Set by
+.Li {{extend}} ;
+in the skeleton, the page's HTML.
+.El
+.Sh NAVIGATION
+The parent of
+.Pa dir/foo.md
+is
+.Pa dir/index.md ;
+the parent of
+.Pa dir/index.md
+is the
+.Pa index.md
+one directory up.
+Top-level pages have the root
+.Pa index.md
+as parent; it has none.
+A page whose parent file does not exist has no parent and no siblings.
+Siblings are the parent's children.
+.Pp
+Children are sorted by:
+.Bl -enum -compact
+.It
+.Ic order ,
+ascending; pages with a numeric
+.Ic order
+come first.
+It is read as a floating-point number; anything else, including
+.Li nan ,
+counts as no order.
+.It
+.Ic date ,
+ascending as a string; dated pages come first.
+.It
+source path.
+.El
+.Sh TABLE OF CONTENTS
+In a page or template,
+.Li {{toc}}
+becomes a markdown list of the page's level 2 to 6 headings, nested by level relative to
+the shallowest, each linking to the heading's id.
+It is put on lines of its own with blank lines around, so it should stand on a line of
+its own (not inside a list or quote).
+In the skeleton,
+.Li {{toc}}
+is the same list as HTML.
+.Bd -literal -offset indent
+{{if toc}}
+**Contents**
+
+{{toc}}
+{{end}}
+.Ed
+.Sh SKELETON
+One HTML file wraps every page.
+.Bl -bullet
+.It
+The page's HTML replaces whatever is inside the first
+.Li <main ...>
+\&...
+.Li </main>
+(case-insensitive), or goes where
+.Li {{content}}
+is if the skeleton has one.
+Without either, the build fails.
+.It
+If the page has a
+.Ic title
+key, its value, HTML-escaped, replaces the text inside the first
+.Li <title> ;
+otherwise the skeleton's own text stays.
+.It
+.Li {{key}}
+is any of the page's keys after evaluation, built-in keys included, HTML-escaped
+.Pq Li & < > \(dq \(aq .
+.Li {{content}}
+and
+.Li {{toc}}
+are inserted as HTML.
+.It
+.Li {{if}} ,
+.Li {{if not}} ,
+.Li {{else}} ,
+.Li {{end}}
+and
+.Li \e{{
+work as in templates; unbalanced conditionals are an error.
+.Li {{include}} ,
+.Li {{extend}}
+and undefined keys are left as written.
+.El
+.Bd -literal -offset indent
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>My site</title>
+  <link rel="canonical" href="https://example.com{{url}}">
+</head>
+<body>
+{{if draft}}<p class="draft">Draft</p>{{end}}
+<main>
+</main>
+<footer>Built {{build_date}}.</footer>
+</body>
+</html>
+.Ed
+.Sh MARKDOWN
+CommonMark 0.31.2 (all 652 spec examples pass), plus, unless
+.Ic extensions
+is false:
+.Bl -bullet -compact
+.It
+GFM tables (a delimiter row with
+.Sq | ;
+.Li \e|
+in a cell is a literal pipe), task lists
+.Li - [x] ,
+strikethrough
+.Li ~x~
+and
+.Li ~~x~~ ,
+bare autolinks.
+.It
+footnotes
+.Li [^label]
+with
+.Li [^label]: text ,
+and inline
+.Li ^[text] .
+.It
+definition lists: a term line, then
+.Li ": definition" .
+.It
+alerts
+.Li > [!NOTE] ,
+.Li [!TIP] ,
+.Li [!IMPORTANT] ,
+.Li [!WARNING] ,
+.Li [!CAUTION] .
+.It
+containers
+.Li ::: name Optional title
+\&...
+.Li ::: ,
+rendered as
+.Li <div class="alert name"> .
+.It
+.Li ==mark== .
+.It
+heading attributes
+.Li ## Title {#id .class} .
+.El
+.Pp
+Raw HTML, heading ids and the sanitizer are set by the
+.Ic [markdown]
+table.
+The
+.Pa .txt
+output renders the same tree as plain text: setext-style underlined headings, links as
+.Li text <url> ,
+lists and tables laid out, wide characters counted as two columns.
+.Sh SITEMAP
+With
+.Ic base_url
+set,
+.Pa sitemap.xml
+lists every built page, sorted by URL, as
+.Li <loc>
+holding
+.Ic base_url
+followed by the page URL, plus
+.Li <lastmod>
+when
+.Ic date
+starts with
+.Li YYYY-MM-DD
+(alone or followed by
+.Sq T
+or a blank).
+Pages with a false
+.Ic sitemap
+key are left out.
+A
+.Pa sitemap.xml
+in the content directory is copied instead, with a warning.
+.Sh EXAMPLES
+A series: a section index and two posts that share a layout.
+.Bd -literal -offset indent
+==> templates/base.md <==
+# {{page_title}}
+
+{{content}}
+
+==> templates/post.md <==
+---
+page_title: "{{series}}: {{title}}"
+---
+{{extend "base"}}
+{{content}}
+
+{{if prev_url}}Previous: [{{prev_title}}]({{prev_url}}){{end}}
+{{if next_url}}Next: [{{next_title}}]({{next_url}}){{end}}
+
+{{include "partials/back"}}
+
+==> templates/partials/back.md <==
+Back to [{{parent_title}}]({{parent_url}}).
+
+==> guide/index.md <==
+---
+title: "Guide"
+---
+{{children}}
+
+==> guide/setup.md <==
+---
+title: "Setup"
+series: "Guide"
+order: 1
+---
+{{extend "post"}}
+Install it.
+
+==> guide/usage.md <==
+---
+title: "Usage"
+series: "Guide"
+order: 2
+---
+{{extend "post"}}
+Use it.
+.Ed
+.Pp
+.Pa dist/guide/setup/index.md
+comes out as:
+.Bd -literal -offset indent
+# Guide: Setup
+
+Install it.
+
+
+
+Next: [Guide: Usage](/guide/usage/)
+
+Back to [Guide](/guide/).
+.Ed
+.Pp
+The
+.Li {{if prev_url}} ... {{end}}
+line is not a standalone tag, so when false it leaves an empty line; markdown ignores it.
+.Pa /guide/
+lists both posts as
+.Li - [Guide: Setup](/guide/setup/)
+and
+.Li - [Guide: Usage](/guide/usage/) :
+.Ic page_title
+comes before
+.Ic title
+for link titles.
+.Sh SEE ALSO
+.Xr ssg 1 ,
+.Xr gitignore 5
+.Pp
+In the source tree:
+.Pa docs/configuration.md ,
+.Pa docs/templates.md ,
+.Pa docs/markdown.md ,
+.Pa docs/cli.md ,
+.Pa docs/getting-started.md .

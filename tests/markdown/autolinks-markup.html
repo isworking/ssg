@@ -1,0 +1,22 @@
+<p>Markup characters inside a URL stay part of it: <a href="http://www.a.com/~user/">www.a.com/~user/</a> <a href="https://a.com/path?x=a~b">https://a.com/path?x=a~b</a>
+<a href="https://en.wikipedia.org/wiki/A_(b)_*c">https://en.wikipedia.org/wiki/A_(b)_*c</a>* and <a href="https://a.com/_x">https://a.com/_x</a>_ y and <a href="https://a.com/==m==">https://a.com/==m==</a> c
+and <a href="https://a.com/%60x%60">https://a.com/`x`</a> y.</p>
+<p>Around markup: <em><a href="https://a.com/em">https://a.com/em</a></em> <strong><a href="http://www.b.com">www.b.com</a></strong> <em><a href="http://www.c.com">www.c.com</a></em> <del><a href="https://d.com">https://d.com</a></del> (<a href="http://www.e.com">www.e.com</a>).</p>
+<p>Escapes and entities: <a href="https://a.com/a_b">https://a.com/a_b</a> <a href="https://a.com/*x">https://a.com/*x</a>* <a href="https://a.com/?a=1&amp;b=2">https://a.com/?a=1&amp;b=2</a>
+<a href="http://www.f.com/he">www.f.com/he</a>&lt;lp <a href="http://www.g.com">www.g.com</a>.&lt; end. Entity-like tails (GFM spec):
+<a href="http://www.google.com/search?q=commonmark">www.google.com/search?q=commonmark</a>&amp;hl; and <a href="http://www.google.com/search?q=commonmark&amp;hl=en">www.google.com/search?q=commonmark&amp;hl=en</a>.</p>
+<p>A footnote after a URL: <a href="https://a.com/note">https://a.com/note</a><sup class="footnote-ref"><a href="#fn-n" id="fnref-n">1</a></sup> and <a href="https://b.com/x">https://b.com/x</a><sup class="footnote-ref"><a href="#fn-inline-1" id="fnref-inline-1">2</a></sup>.</p>
+<p>In link text: <a href="/dest">https://a.com/<em>x</em></a> and [see <a href="http://www.h.com">www.h.com</a>] unresolved.</p>
+<p>Only lowercase: Www.cap.com WWW.X.COM HTTPS://UP.com Http://a.com <a href="http://www.ok.com">www.ok.com</a> <a href="https://ok.com">https://ok.com</a></p>
+<p>Unicode and escaped: <a href="https://%E4%BE%8B%E3%81%88.jp/%C3%BC">https://例え.jp/ü</a> and <a href="https://caf%C3%A9.fr/menu">https://café.fr/menu</a> and <a href="http://x.com/a%5Cb">http://x.com/a\b</a> and
+<a href="http://ok.com/a">http://ok.com/a</a> and mail@ü.example.com and <a href="mailto:a@b.co">a@b.co</a>.</p>
+<section class="footnotes">
+<ol>
+<li id="fn-n">
+<p>The note. <a href="#fnref-n" class="footnote-backref">↩</a></p>
+</li>
+<li id="fn-inline-1">
+<p>inline <a href="#fnref-inline-1" class="footnote-backref">↩</a></p>
+</li>
+</ol>
+</section>

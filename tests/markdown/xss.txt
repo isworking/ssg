@@ -1,0 +1,20 @@
+a b c
+
+x y [image: i] <data:image/png;base64,AAA> [image: j] ok <https://ok.example/>
+
+javascript:alert(1) vbscript:msgbox file:///etc/passwd
+
+<scr
+
+<img src="x" title="unclosed
+</div>
+
+s
+
+<img/src=x/onerror=alert(1)> <img/onerror=alert(1) src=x>
+
+fine
+
+styled
+
+text with bold and it.

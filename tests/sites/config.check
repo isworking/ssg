@@ -1,0 +1,26 @@
+printf '<main></main>\n' >"$SITE/s.html"
+echo '# hi' >"$SITE/index.md"
+cat >"$SITE/site.toml" <<'TOML'
+# comment
+dist = "dist"   # trailing comment
+templates = 'templates'
+skeleton = "s.html"
+mystery = 1
+[markdown]
+html = false
+TOML
+build
+status 0
+err_has 'site.toml:5: unknown key '"'"'mystery'"'"
+err_has 'built 1 page, copied 0 files in'
+echo '<b>raw</b>' >>"$SITE/index.md"
+build --quiet
+contains index.html '&lt;b&gt;raw&lt;/b&gt;'
+printf 'dist = "dist"\ntemplates = "t"\nskeleton = "s.html"\n\nclean = "yes"\n' >"$SITE/site.toml"
+build
+status 1
+err_has 'site.toml:5: '"'"'clean'"'"' must be a boolean'
+printf 'dist = "dist"\nskeleton = "s.html"\n' >"$SITE/site.toml"
+build
+status 1
+err_has 'must set dist, templates, and skeleton'

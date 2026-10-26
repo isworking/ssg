@@ -1,6 +1,9 @@
 ---
 series_title: "Create a processor"
+description: "A series on building a CPU."
 ---
 {{extend "series"}}
 
-Start with [Let's start](lets-start/).
+Posts in this series:
+
+{{children}}

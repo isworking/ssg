@@ -1,0 +1,36 @@
+w[1] w[2] w[3] w[4] w[5] w[6] w[7] w[8] w[9] w[10] w[11]
+
+----------------------------------------
+
+[1] a ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+    ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+
+[2] a ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+    ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+
+[3] a ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+    ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+
+[4] a ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+    ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+
+[5] a ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+    ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+
+[6] a ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+    ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+
+[7] a ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+    ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+
+[8] a ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+    ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+
+[9] a ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+    ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+
+[10] a ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+     ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+
+[11] a ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab
+     ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Markdown features | isworking</title>
+  <meta name="description" content="Everything the renderer understands.">
+  <link rel="canonical" href="https://example.com/features/">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+<h1 id="markdown-features">Markdown features</h1>
+<ul>
+<li><a href="#tables">Tables</a></li>
+<li><a href="#footnotes">Footnotes</a></li>
+<li><a href="#alerts">Alerts</a></li>
+<li><a href="#definition-lists">Definition lists</a></li>
+<li><a href="#task-lists">Task lists</a></li>
+<li><a href="#other-bits">Other bits</a></li>
+</ul>
+<h2 id="tables">Tables</h2>
+<table>
+<thead>
+<tr>
+<th align="left">Option</th>
+<th align="right">Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">html</td>
+<td align="right">true</td>
+</tr>
+<tr>
+<td align="left">scripts</td>
+<td align="right">false</td>
+</tr>
+</tbody>
+</table>
+<h2 id="footnotes">Footnotes</h2>
+<p>Plain text output too.<sup class="footnote-ref"><a href="#fn-txt" id="fnref-txt">1</a></sup></p>
+<h2 id="alerts">Alerts</h2>
+<div class="alert note">
+<p class="alert-title">Note</p>
+<p>Alerts use GitHub's syntax.</p>
+</div>
+<h2 id="definition-lists">Definition lists</h2>
+<dl>
+<dt>Skeleton</dt>
+<dd>The HTML shell every page is poured into.</dd>
+</dl>
+<h2 id="task-lists">Task lists</h2>
+<ul class="contains-task-list">
+<li class="task-list-item"><input type="checkbox" checked="" disabled="" /> tables</li>
+<li class="task-list-item"><input type="checkbox" disabled="" /> world domination</li>
+</ul>
+<h2 id="other-bits">Other bits</h2>
+<p><del>Struck</del>, <mark>marked</mark>, and <a href="https://example.com">https://example.com</a> autolinked. Template syntax can be
+escaped: {{children}} stays as written.</p>
+<section class="footnotes">
+<ol>
+<li id="fn-txt">
+<p>Every page is also written as <code>.txt</code> and <code>.md</code>. <a href="#fnref-txt" class="footnote-backref">↩</a></p>
+</li>
+</ol>
+</section>
+</main>
+<footer>Built 1970-01-01.</footer>
+</body>
+</html>

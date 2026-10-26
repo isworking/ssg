@@ -1,0 +1,46 @@
+# Frontmatter parsing: verbatim double quotes, legacy unfenced vars, CR / CRLF line endings.
+printf 'dist = "dist"\ntemplates = "t"\nskeleton = "s.html"\n' >"$SITE/site.toml"
+printf '<html><head><title></title></head><body><main></main></body></html>\n' >"$SITE/s.html"
+mkdir -p "$SITE/t"
+# Double-quoted values are verbatim: no escapes, so LaTeX and Windows paths survive.
+cat >"$SITE/index.md" <<'MD'
+---
+title: "Proof that $a \neq b$"
+path: "C:\new\tab"
+q: "say \"hi\"" # comment
+inner: "a "b" c"
+single: 'it''s'
+bare: plain words # comment
+---
+[{{path}}] [{{q}}] [{{inner}}] [{{single}}] [{{bare}}]
+MD
+# Unfenced: only the leading run of key: "value" lines (closing quote last) is frontmatter.
+printf 'Answer: "yes"\nTwo: "2"\n\nThree: "3"\n{{Answer}}{{Two}} body\n' >"$SITE/unfenced.md"
+printf 'Note: "a" # not a var\n{{Note}} body\n' >"$SITE/unfenced-comment.md"
+printf 'Lead text\nKey: "v"\n{{Key}}\n' >"$SITE/unfenced-late.md"
+printf -- '---\rtitle: "Hello"\r---\rBody {{title}}\r{{if title}}\rshown\r{{end}}\r' >"$SITE/cr.md"
+printf -- '---\r\ntitle: "Hi"\r\n---\r\nBody {{title}}\r\n' >"$SITE/crlf.md"
+build --quiet
+status 0
+contains index.html '<title>Proof that $a \neq b$</title>'
+contains index.md '[C:\new\tab] [say \"hi\"] [a "b" c] [it'"'"'s] [plain words]'
+omits unfenced/index.md 'Answer'
+omits unfenced/index.md 'Two:'
+contains unfenced/index.md 'Three: "3"'
+contains unfenced/index.md 'yes2 body'
+contains unfenced-comment/index.md 'Note: "a" # not a var'
+contains unfenced-comment/index.md '{{Note}} body'
+contains unfenced-late/index.md 'Key: "v"'
+contains unfenced-late/index.md '{{Key}}'
+contains cr/index.html '<title>Hello</title>'
+contains cr/index.html 'Body Hello'
+contains cr/index.html 'shown'
+omits cr/index.html 'title:'
+omits cr/index.html '{{if'
+contains crlf/index.html '<title>Hi</title>'
+contains crlf/index.html 'Body Hi'
+# An unclosed fence with CR endings is still reported, with its line number.
+printf -- '---\rtitle: "x"\rnot a pair\r---\r' >"$SITE/bad.md"
+build --quiet
+status 1
+err_has 'frontmatter line 3'

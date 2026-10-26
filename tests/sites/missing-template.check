@@ -1,0 +1,4 @@
+build --quiet
+status 1
+err_has 'ssg: sub/page.md: '
+err_has 'nope'

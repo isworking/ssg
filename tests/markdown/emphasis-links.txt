@@ -1,0 +1,3 @@
+a <x> b <y> c <z> d <w> e <v>* *f <u>
+
+open g <t> and closed h <s>

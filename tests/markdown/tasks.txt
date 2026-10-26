@@ -1,0 +1,11 @@
+- [ ] todo
+- [x] done
+- [x] also done
+- [y] not a task
+- plain
+
+1. [ ] ordered task
+
+- [ ] loose
+
+- [x] items

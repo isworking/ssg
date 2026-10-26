@@ -1,0 +1,12 @@
+Apple
+    A red fruit.
+    Also a company.
+
+Term two
+Term two b
+    Loose definition.
+
+    With a continuation paragraph.
+
+Third
+    tilde def with emph

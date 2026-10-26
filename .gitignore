@@ -4,3 +4,6 @@
 *.o
 example/dist
 example/out
+tests/spec.json
+.cache/
+compile_commands.json

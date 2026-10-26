@@ -1,0 +1,103 @@
+# Page vars that come from other pages (children, prev/next/parent titles), drafts, order, toc.
+minimal_site
+# a literal \{{ in a title stays literal wherever another page shows it
+printf -- '---\ntitle: "Home"\n---\n{{children}}\n' >"$SITE/index.md"
+printf -- '---\ntitle: "About \\{{title}} tags"\n---\nnext: {{next_title}}\n' >"$SITE/a.md"
+printf -- '---\ntitle: "B"\n---\nprev: {{prev_title}}\n' >"$SITE/b.md"
+build --quiet
+status 0
+contains index.md '- [About {{title}} tags](/a/)'
+contains b/index.md 'prev: About {{title}} tags'
+contains a/index.html '<title>About {{title}} tags</title>'
+printf -- '---\ntitle: "The \\{{if key}} tag"\n---\nx\n' >"$SITE/a.md"
+printf 'plain\n' >"$SITE/index.md"
+build --quiet
+status 0
+contains b/index.md 'prev: The {{if key}} tag'
+rm "$SITE/a.md" "$SITE/b.md"
+
+# link titles don't depend on which page happens to render first
+mkdir -p "$SITE/d"
+printf -- '---\ntitle: "Guide"\n---\n{{children}}\n' >"$SITE/d/index.md"
+printf -- '---\ntitle: "{{parent_title}}: A"\n---\nnext={{next_title}}\n' >"$SITE/d/a.md"
+printf -- '---\ntitle: "{{parent_title}}: Z"\n---\nprev={{prev_title}}\n' >"$SITE/d/z.md"
+build --quiet
+status 0
+contains d/index.md '- [Guide: A](/d/a/)
+- [Guide: Z](/d/z/)'
+contains d/a/index.md 'next=Guide: Z'
+contains d/z/index.md 'prev=Guide: A'
+contains d/z/index.html '<title>Guide: Z</title>'
+rm -r "$SITE/d"
+
+# a title that reads as false is still a title
+printf -- '{{children}}\n' >"$SITE/index.md"
+printf -- '---\ntitle: "Off"\n---\nx\n' >"$SITE/switch.md"
+printf -- '---\ntitle: "0"\n---\nx\n' >"$SITE/zero.md"
+printf -- '---\ntitle: " "\n---\nx\n' >"$SITE/blank.md"
+build --quiet
+status 0
+contains index.md '- [Off](/switch/)'
+contains index.md '- [0](/zero/)'
+contains index.md '- [blank](/blank/)'
+rm "$SITE/switch.md" "$SITE/zero.md" "$SITE/blank.md"
+
+# order: nan (or anything not a number) counts as no order; the rest stay sorted
+i=1
+: >"$TMP/orders"
+while [ $i -le 200 ]; do
+  if [ $((i % 3)) = 0 ]; then o=nan; else o=$((i % 50)); echo $o >>"$TMP/orders"; fi
+  printf -- '---\ntitle: "%s"\norder: "%s"\n---\nx\n' "$o" "$o" >"$SITE/p$i.md"
+  i=$((i + 1))
+done
+build --quiet
+status 0
+got=$(sed -n 's/^- \[\([^]]*\)\].*/\1/p' "$DIST/index.md" | tr '\n' ' ')
+want="$(sort -n "$TMP/orders" | tr '\n' ' ')$(i=0; while [ $i -lt 66 ]; do printf 'nan '; i=$((i + 1)); done)"
+[ "$got" = "$want" ] && ok || bad "order: got $got"
+rm "$SITE"/p*.md
+
+# a draft foo/index.md that isn't built doesn't move foo.md
+mkdir -p "$SITE/foo"
+printf -- '---\ntitle: "Foo"\n---\nfoo\n' >"$SITE/foo.md"
+printf -- '---\ndraft: "true"\n---\nwip\n' >"$SITE/foo/index.md"
+build --quiet
+status 0
+has foo/index.html
+lacks foo.html
+contains index.md '- [Foo](/foo/)'
+# ... also when a template makes it a draft
+printf -- '---\ndraft: "true"\n---\n{{content}}\n' >"$SITE/templates/wip.md"
+printf -- '{{extend "wip"}}\nwip\n' >"$SITE/foo/index.md"
+build --quiet
+status 0
+has foo/index.html
+contains foo/index.html 'foo'
+contains index.md '- [Foo](/foo/)'
+build --quiet --drafts
+status 0
+has foo.html
+contains foo/index.html 'wip'
+rm -r "$SITE/foo" "$SITE/foo.md" "$SITE/templates/wip.md"
+# a draft isn't rendered, so its unfinished template can't fail the build
+printf -- '---\ndraft: "true"\n---\n{{extend "not-written-yet"}}\nwip\n' >"$SITE/wip.md"
+build --quiet
+status 0
+lacks wip
+build --quiet --drafts
+status 1
+err_has 'missing template "not-written-yet"'
+rm "$SITE/wip.md"
+
+# {{if toc}} is false on a page without ## headings
+printf -- '{{if toc}}\nOn this page:\n\n{{toc}}\n{{else}}\nNo sections.\n{{end}}\n\nJust text.\n' >"$SITE/index.md"
+build --quiet
+status 0
+contains index.md 'No sections.'
+omits index.md 'On this page'
+printf '\n## One\n' >>"$SITE/index.md"
+build --quiet
+status 0
+contains index.md 'On this page:'
+contains index.md '- [One](#one)'
+omits index.md 'No sections.'

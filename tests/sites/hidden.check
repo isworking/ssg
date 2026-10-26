@@ -1,0 +1,48 @@
+for d in .git .github .wrangler sub/.cache; do mkdir -p "$SITE/$d"; echo x >"$SITE/$d/file"; done
+echo SECRET=1 >"$SITE/.env"
+echo x >"$SITE/sub/.hidden.md"
+echo x >"$SITE/sub/visible.txt"
+echo x >"$SITE/.well-known/.nope"
+mkdir -p "$SITE/dist/old"; echo stale >"$SITE/dist/old/stale.txt"; : >"$SITE/dist/.ssg-dist"
+build --quiet
+status 0
+lacks .git
+lacks .github
+lacks .wrangler
+lacks .env
+lacks sub/.cache
+lacks sub/.hidden
+lacks sub/.hidden.html
+has sub/visible.txt
+has .well-known/security.txt
+lacks .well-known/.nope
+lacks site.toml
+lacks skeleton.html
+lacks templates
+lacks dist
+has style.css
+has index.html
+has index.md
+has index.txt
+# clean: stale output from an earlier build is gone
+lacks old/stale.txt
+has .ssg-dist
+# a nested git checkout (e.g. CI's ./builder) is another project: skipped, even its markdown
+mkdir -p "$SITE/builder/.git" "$SITE/sub2"; echo '{{include "nope"}}' >"$SITE/builder/README.md"
+echo x >"$SITE/builder/main.cpp"; echo 'gitdir: ../x' >"$SITE/sub2/.git"; echo x >"$SITE/sub2/f.txt"
+build --quiet
+status 0
+lacks builder
+lacks sub2
+err_lacks 'note'
+build
+status 0
+err_has 'ssg: note: skipping builder/ (a nested git checkout; set nested_repos = true to build it)'
+err_has 'ssg: note: skipping sub2/ (a nested git checkout'
+err_lacks 'warning'
+printf 'nested_repos = true\n' >>"$SITE/site.toml"
+rm "$SITE/builder/README.md"
+build --quiet
+status 0
+has builder/main.cpp
+has sub2/f.txt

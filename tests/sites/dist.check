@@ -1,0 +1,100 @@
+# dist must never overwrite or wipe sources.
+minimal_site
+printf -- '---\ntitle: "My page"\n---\n# {{title}}\n\n{{if draft}}secret{{end}}\nhi\n' >"$SITE/index.md"
+echo 'a {}' >"$SITE/style.css"
+src='---
+title: "My page"
+---
+# {{title}}
+
+{{if draft}}secret{{end}}
+hi
+'
+# dist = the content dir: refused, sources intact
+printf 'dist = "."\ntemplates = "templates"\nskeleton = "skeleton.html"\n' >"$SITE/site.toml"
+build --quiet
+status 1
+err_has 'must not be the content dir or contain it'
+src_same index.md "$src"
+# dist = an ancestor of the content dir: refused, the parent's files intact
+mkdir -p "$TMP/distparent"; echo '# parent' >"$TMP/distparent/index.md"
+cp -R "$SITE" "$TMP/distparent/site"
+printf 'dist = ".."\ntemplates = "templates"\nskeleton = "skeleton.html"\n' >"$TMP/distparent/site/site.toml"
+"$SSG" --quiet "$TMP/distparent/site" 2>"$ERR"; rc=$?
+status 1
+[ "$(cat "$TMP/distparent/index.md")" = "# parent" ] && ok || bad "dist = .. overwrote the parent"
+lacks_out() { [ ! -e "$1" ] && ok || bad "unexpected $1"; }
+lacks_out "$TMP/distparent/index.html"
+# dist holding the templates dir or the skeleton: refused
+printf 'dist = "dist"\ntemplates = "dist/t"\nskeleton = "skeleton.html"\n' >"$SITE/site.toml"
+build --quiet
+status 1
+err_has 'must not be or contain the templates dir'
+printf 'dist = "dist"\ntemplates = "templates"\nskeleton = "dist/s.html"\n' >"$SITE/site.toml"
+build --quiet
+status 1
+err_has 'must not contain the skeleton'
+# dist in a hidden dir: refused
+printf 'dist = ".git/out"\ntemplates = "templates"\nskeleton = "skeleton.html"\n' >"$SITE/site.toml"
+build --quiet
+status 1
+err_has 'must not be inside a hidden dir (.git)'
+[ ! -e "$SITE/.git" ] && ok || bad ".git was created"
+printf 'dist = "../.out"\ntemplates = "templates"\nskeleton = "skeleton.html"\n' >"$SITE/site.toml"
+build --quiet
+status 1
+err_has 'hidden dir (.out)'
+src_same index.md "$src"
+
+# dist = a dir of sources: never cleaned, not even on the second build
+printf 'dist = "posts"\ntemplates = "templates"\nskeleton = "skeleton.html"\n' >"$SITE/site.toml"
+mkdir -p "$SITE/posts"; echo '# Hello' >"$SITE/posts/hello.md"
+build
+status 0
+err_has "/posts: it wasn't created by ssg (no .ssg-dist); delete it once by hand"
+build
+status 0
+err_has 'not cleaning'
+src_same posts/hello.md '# Hello
+'
+[ ! -e "$SITE/posts/.ssg-dist" ] && ok || bad "foreign dist got marked"
+[ -f "$SITE/posts/index.html" ] && ok || bad "foreign dist not built over"
+
+# a dist ssg made is cleaned; an empty one is taken over
+printf 'dist = "dist"\ntemplates = "templates"\nskeleton = "skeleton.html"\n' >"$SITE/site.toml"
+rm -rf "$SITE/posts"
+mkdir -p "$SITE/dist"
+build
+status 0
+err_lacks 'not cleaning'
+has .ssg-dist
+echo stale >"$DIST/stale.txt"
+build
+status 0
+lacks stale.txt
+has .ssg-dist
+# the marker isn't a page or a link target
+build --quiet --check-links
+status 0
+printf '[m](/.ssg-dist)\n' >"$SITE/m.md"
+build --quiet --check-links
+err_has 'm.md: broken link /.ssg-dist'
+rm "$SITE/m.md"
+
+# symlinks in dist are replaced, never written through (clean = false keeps them around)
+printf 'dist = "dist"\ntemplates = "templates"\nskeleton = "skeleton.html"\nclean = false\n' >"$SITE/site.toml"
+echo VICTIM >"$TMP/victim.txt"; echo VICTIM >"$TMP/victim2.txt"; mkdir -p "$TMP/victimdir"
+rm -f "$DIST/index.html" "$DIST/style.css"
+ln -s "$TMP/victim.txt" "$DIST/index.html"
+ln -s "$TMP/victim2.txt" "$DIST/style.css"
+ln -s "$TMP/victimdir" "$DIST/sub"
+mkdir -p "$SITE/sub"; echo p >"$SITE/sub/p.md"
+build --quiet
+status 0
+[ "$(cat "$TMP/victim.txt")" = VICTIM ] && ok || bad "page written through a symlink"
+[ "$(cat "$TMP/victim2.txt")" = VICTIM ] && ok || bad "asset copied through a symlink"
+[ -z "$(ls "$TMP/victimdir")" ] && ok || bad "page written through a dir symlink"
+[ ! -L "$DIST/index.html" ] && [ ! -L "$DIST/style.css" ] && [ ! -L "$DIST/sub" ] && ok ||
+  bad "symlinks left in dist"
+contains index.html '<p>hi</p>'
+has sub/p/index.html

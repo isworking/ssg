@@ -1,0 +1,13 @@
+# --check-links reads real href/src attributes only, not text that looks like one.
+minimal_site
+printf "Use \`<img src='missing.png'>\` in HTML. Or write src='logo.png' in prose.\n\n    <a href='nowhere/'>x</a>\n\n<!-- <a href=\"commented/\"> -->\n\n<script>var s = '<a href=\"scripted/\">';</script>\n\n<a title=\"x\" href=real-broken/>r</a> <img alt='a' src = \"also-broken.png\">\n" >"$SITE/index.md"
+printf '[markdown]\nhtml = true\nscripts = true\n' >>"$SITE/site.toml"
+build --quiet --check-links
+status 0
+err_lacks 'missing.png'
+err_lacks 'logo.png'
+err_lacks 'nowhere/'
+err_lacks 'commented/'
+err_lacks 'scripted/'
+err_has 'index.md: broken link real-broken/'
+err_has 'index.md: broken link also-broken.png'
