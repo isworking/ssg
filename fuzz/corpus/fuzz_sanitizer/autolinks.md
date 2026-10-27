@@ -1,0 +1,6 @@
+Visit www.example.com, or https://example.com/path?q=1. Also (https://en.wikipedia.org/wiki/Foo_(bar)) and foo@bar.example.com.
+
+Not in code `www.example.com` nor [www.x.com](http://y.com) nor <https://z.com>.
+
+Trailing: http://example.com/a_b_ and www.commonmark.org/he&lt;lp and www.x.com/&amp;hl; done.
+Invalid www.x_y.z_w nope. a.b@c.d-

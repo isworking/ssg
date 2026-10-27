@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>ssg example</title>
+  <link rel="alternate" href="https://example.com/blog/"/>
+  <link rel="self" href="https://example.com/feed.xml"/>
+  <id>https://example.com/feed.xml</id>
+  <updated>2026-07-01T00:00:00Z</updated>
+  <author><name>Rajdeep</name></author>
+  <entry>
+    <title>Third post</title>
+    <link href="https://example.com/blog/third/"/>
+    <id>https://example.com/blog/third/</id>
+    <updated>2026-07-01T00:00:00Z</updated>
+    <summary>Third post, written 2026-07-01.</summary>
+  </entry>
+  <entry>
+    <title>Second post</title>
+    <link href="https://example.com/blog/second/"/>
+    <id>https://example.com/blog/second/</id>
+    <updated>2026-06-01T00:00:00Z</updated>
+    <summary>Second post, written 2026-06-01.</summary>
+  </entry>
+  <entry>
+    <title>First post</title>
+    <link href="https://example.com/blog/first/"/>
+    <id>https://example.com/blog/first/</id>
+    <updated>2026-05-01T00:00:00Z</updated>
+    <summary>First post, written 2026-05-01.</summary>
+  </entry>
+</feed>

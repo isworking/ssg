@@ -1,0 +1,30 @@
+# A date after the build date (2030-01-01 here) holds a page back, like a draft.
+minimal_site
+printf -- '---\ntitle: "Home"\n---\n{{children}}\n' >"$SITE/index.md"
+printf -- '---\ntitle: "Past"\ndate: "2029-12-31"\n---\nx\n' >"$SITE/past.md"
+printf -- '---\ntitle: "Today"\ndate: "2030-01-01"\n---\nx\n' >"$SITE/today.md"
+printf -- '---\ntitle: "Later"\ndate: "2030-01-02T09:00"\n---\nx\n' >"$SITE/later.md"
+printf -- '---\ntitle: "Computed"\ndate: "{{when}}"\nwhen: "2031-05-05"\n---\nx\n' >"$SITE/computed.md"
+printf -- '---\ntitle: "Words"\ndate: "next week"\n---\nx\n' >"$SITE/words.md"
+build --quiet
+status 0
+has past/index.html
+has today/index.html
+has words/index.html
+lacks later/index.html
+lacks later/index.md
+lacks computed/index.html
+omits index.md '/later/'
+omits index.md '/computed/'
+contains index.md '[Past](/past/)'
+
+# --drafts builds them, and so does future = true
+build --quiet --drafts
+has later/index.html
+has computed/index.html
+printf 'future = true\n' >>"$SITE/site.toml"
+build --quiet
+status 0
+has later/index.html
+has computed/index.html
+contains index.md '[Later](/later/)'

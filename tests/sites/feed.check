@@ -1,0 +1,83 @@
+# [feed] -> feed.xml (Atom 1.0), newest first, absolute URLs
+minimal_site
+mkdir -p "$SITE/posts"
+post() { printf -- '---\ntitle: "%s"\ndate: "%s"\n%s---\nbody\n' "$2" "$3" "${4:-}" >"$SITE/posts/$1.md"; }
+printf 'x\n' >"$SITE/posts/index.md"
+post old "Old & busy" 2029-01-05 'description: "The <first> one"
+'
+post mid "Middle" 2029-06-01T10:00 'author: "Bo"
+'
+post new "New" 2029-12-31
+post hidden "Hidden" 2029-12-30 'feed: "false"
+'
+printf -- '---\ntitle: "Undated"\n---\nx\n' >"$SITE/posts/undated.md"
+printf -- '---\ntitle: "Elsewhere"\ndate: "2029-12-31"\n---\nx\n' >"$SITE/other.md"
+printf 'base_url = "https://example.com"\n[feed]\nsection = "/posts/"\ntitle = "My <blog>"\nauthor = "Ann"\nlimit = 3\n' >>"$SITE/site.toml"
+build --quiet
+status 0
+same feed.xml '<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>My &lt;blog&gt;</title>
+  <link rel="alternate" href="https://example.com/posts/"/>
+  <link rel="self" href="https://example.com/feed.xml"/>
+  <id>https://example.com/feed.xml</id>
+  <updated>2029-12-31T00:00:00Z</updated>
+  <author><name>Ann</name></author>
+  <entry>
+    <title>New</title>
+    <link href="https://example.com/posts/new/"/>
+    <id>https://example.com/posts/new/</id>
+    <updated>2029-12-31T00:00:00Z</updated>
+  </entry>
+  <entry>
+    <title>Middle</title>
+    <link href="https://example.com/posts/mid/"/>
+    <id>https://example.com/posts/mid/</id>
+    <updated>2029-06-01T00:00:00Z</updated>
+    <author><name>Bo</name></author>
+  </entry>
+  <entry>
+    <title>Old &amp; busy</title>
+    <link href="https://example.com/posts/old/"/>
+    <id>https://example.com/posts/old/</id>
+    <updated>2029-01-05T00:00:00Z</updated>
+    <summary>The &lt;first&gt; one</summary>
+  </entry>
+</feed>
+'
+omits sitemap.xml 'feed.xml'
+
+# feed_url is a template key once the feed is on
+printf 'url={{feed_url}}\n' >"$SITE/posts/new.md"
+build --quiet
+contains posts/new/index.md 'url=https://example.com/feed.xml'
+
+# no section: every dated page, no author in the config: the title stands in
+printf 'dist = "dist"\ntemplates = "templates"\nskeleton = "skeleton.html"\nbase_url = "https://example.com"\n[feed]\n' >"$SITE/site.toml"
+post new "New" 2029-12-31
+build --quiet
+contains feed.xml '<title>example.com</title>'
+contains feed.xml '<author><name>example.com</name></author>'
+contains feed.xml '<title>Elsewhere</title>'
+omits feed.xml '<title>Undated</title>'
+omits feed.xml '<title>Hidden</title>'
+omits feed.xml '/404/'
+
+# needs base_url; a hand-written feed.xml wins
+printf 'dist = "dist"\ntemplates = "templates"\nskeleton = "skeleton.html"\n[feed]\n' >"$SITE/site.toml"
+build
+status 0
+err_has '[feed] needs base_url'
+lacks feed.xml
+printf 'dist = "dist"\ntemplates = "templates"\nskeleton = "skeleton.html"\nbase_url = "https://example.com"\n[feed]\n' >"$SITE/site.toml"
+printf 'mine\n' >"$SITE/feed.xml"
+build
+err_has 'feed.xml exists in the content dir; not generating one'
+same feed.xml 'mine
+'
+
+# a limit below 1 is an error
+printf 'dist = "dist"\ntemplates = "templates"\nskeleton = "skeleton.html"\n[feed]\nlimit = 0\n' >"$SITE/site.toml"
+build
+status 1
+err_has "'feed.limit' must be between 1 and 10000"

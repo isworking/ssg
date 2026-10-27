@@ -1,0 +1,71 @@
+# [taxonomy.<name>]: an index page and a page per term, {{terms}}, {{pages}}, {{<name>_links}}
+minimal_site
+mkdir -p "$SITE/posts"
+post() { printf -- '---\ntitle: "%s"\ndate: "%s"\n%s---\nbody {{tags_links}}\n' "$2" "$3" "${4:-}" >"$SITE/posts/$1.md"; }
+post one "One" 2029-01-01 'tags: "Rust, C++ & Rust, web dev"
+'
+post two "Two" 2029-02-01 'tags: "rust,  , Web Dev"
+'
+post three "Three" 2029-03-01
+printf 'x\n' >"$SITE/index.md"
+printf '\n[taxonomy.tags]\n' >>"$SITE/site.toml"
+build --quiet
+status 0
+has tags/index.html
+has tags/rust/index.html
+has tags/web-dev/index.html
+has tags/c-rust/index.html
+same tags/index.md '- [C++ \& Rust](/tags/c-rust/) (1)
+- [Rust](/tags/rust/) (2)
+- [web dev](/tags/web-dev/) (2)
+'
+same tags/rust/index.md '- [Two](/posts/two/)
+- [One](/posts/one/)
+'
+contains tags/index.html '<title>Tags</title>'
+contains tags/web-dev/index.html '<title>web dev</title>'
+contains posts/one/index.md 'body - [Rust](/tags/rust/)
+- [C++ \& Rust](/tags/c-rust/)
+- [web dev](/tags/web-dev/)'
+contains posts/three/index.md 'body'
+omits posts/three/index.md '/tags/'
+
+# templates/taxonomy.md and term.md, with the keys they get
+cat >"$SITE/templates/taxonomy.md" <<'T'
+---
+title: "All {{taxonomy_title}}"
+---
+{{term_count}} {{taxonomy}}
+
+{{terms}}
+T
+cat >"$SITE/templates/term.md" <<'T'
+{{term}} / {{term_slug}} / {{term_url}} / {{taxonomy_url}} / {{term_count}}
+
+{{pages}}
+T
+build --quiet
+status 0
+contains tags/index.html '<title>All Tags</title>'
+contains tags/index.md '3 tags'
+contains tags/rust/index.md 'Rust / rust / /tags/rust/ / /tags/ / 2'
+
+# configuration: key, path, title
+mkdir -p "$SITE/notes"
+printf -- '---\ntitle: "N"\ntopics: "x"\n---\n' >"$SITE/notes/n.md"
+printf '\n[taxonomy.topics]\nkey = "topics"\npath = "/browse/by-topic/"\ntitle = "Subjects"\n' >>"$SITE/site.toml"
+build --quiet
+status 0
+has browse/by-topic/index.html
+has browse/by-topic/x/index.html
+contains browse/by-topic/index.html '<title>All Subjects</title>'
+
+# a hand-written page wins, with a warning
+printf -- '---\ntitle: "Mine"\n---\nmine\n' >"$SITE/tags.md"
+mkdir -p "$SITE/tags"
+printf 'mine\n' >"$SITE/tags/rust.md"
+build
+status 0
+err_has 'tags/index.md: exists as a page; not generating its taxonomy index page'
+err_has 'tags/rust/index.md: exists as a page; not generating its term page'
+contains tags/index.md 'mine'

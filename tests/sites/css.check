@@ -1,0 +1,92 @@
+# {{asset}}, {{inline}} and the minifier.
+minimal_site
+printf 'body { color : red ; }\n/* gone */\n' >"$SITE/style.css"
+printf 'x' >"$SITE/plain.txt"
+printf -- '---\ntitle: T\n---\n# A\n' >"$SITE/a.md"
+printf '<html><head><title></title><link rel="stylesheet" href="{{asset "style.css"}}">\n<style>{{inline "style.css"}}</style></head><body><main></main></body></html>\n' >"$SITE/skeleton.html"
+build --quiet
+status 0
+# sha256 of the file's bytes, first 10 hex digits.
+HASH=$(shasum -a 256 "$SITE/style.css" | cut -c1-10)
+contains a/index.html "href=\"/style.$HASH.css\""
+contains a/index.html '<style>body { color : red ; }
+/* gone */</style>'
+has style.css
+has "style.$HASH.css"
+same "style.$HASH.css" "$(cat "$SITE/style.css")
+"
+src_has() { grep -qF -- "$2" "$SITE/$1" && ok || bad "$1 lacks: $2"; }
+src_has manifest.json "\"fingerprint\": \"style.$HASH.css\", \"fingerprint_size\": 34, \"immutable\": true"
+CSP=$(printf 'body { color : red ; }\n/* gone */' | openssl dgst -sha256 -binary | openssl base64)
+src_has manifest.json "\"csp_hash\": \"sha256-$CSP\""
+src_has manifest.json '"inline_styles": ['
+# Same content, same name; different content, different name.
+cp "$SITE/manifest.json" "$TMP/m1"
+build --quiet
+cmp -s "$TMP/m1" "$SITE/manifest.json" && ok || bad "manifest changed between identical builds"
+# Minifier on: published, hashed and inlined files are all minified; the hash follows.
+printf '\n[css]\nminify = true\n' >>"$SITE/site.toml"
+build --quiet
+status 0
+contains a/index.html '<style>body{color :red}</style>'
+contains style.css 'body{color :red}'
+HASH2=$(shasum -a 256 "$DIST/style.css" | cut -c1-10)
+[ "$HASH2" != "$HASH" ] && contains a/index.html "href=\"/style.$HASH2.css\"" || bad "hash did not follow the minified content"
+# Assets in subdirectories and without extensions.
+mkdir -p "$SITE/css"
+printf 'a{b:c}' >"$SITE/css/site.css"
+printf 'data' >"$SITE/LICENSE"
+printf -- '---\ntitle: T\n---\n{{asset "css/site.css"}} {{asset "LICENSE"}}\n' >"$SITE/b.md"
+build --quiet
+status 0
+H3=$(shasum -a 256 "$SITE/css/site.css" | cut -c1-10)
+H4=$(shasum -a 256 "$SITE/LICENSE" | cut -c1-10)
+has "css/site.$H3.css"
+has "LICENSE.$H4"
+contains b/index.md "/css/site.$H3.css /LICENSE.$H4"
+# Errors fail the build and name the page.
+printf -- '---\ntitle: T\n---\n{{asset "nope.css"}}\n' >"$SITE/c.md"
+build --quiet
+status 1
+err_has 'c.md'
+err_has 'no such file among the published assets'
+printf -- '---\ntitle: T\n---\n{{asset "../x"}}\n' >"$SITE/c.md"
+build --quiet
+status 1
+err_has 'no such file'
+printf -- '---\ntitle: T\n---\n{{inline "plain.txt"}}\n' >"$SITE/c.md"
+build --quiet
+status 1
+err_has 'only .css files can be inlined'
+rm "$SITE/c.md"
+printf 'a{content:"</STYLE><script>"}' >"$SITE/bad.css"
+printf -- '---\ntitle: T\n---\n{{inline "bad.css"}}\n' >"$SITE/c.md"
+build --quiet
+status 1
+err_has '</style'
+rm "$SITE/c.md" "$SITE/bad.css"
+# Inlining past css.inline_limit warns; the build still succeeds.
+printf 'inline_limit = 10\n' >>"$SITE/site.toml"
+printf 'a{b:c}a{b:c}a{b:c}' >"$SITE/big.css"
+printf '<html><head><title></title><style>{{inline "big.css"}}</style></head><body><main></main></body></html>\n' >"$SITE/skeleton.html"
+build --quiet
+status 0
+err_has 'inlined stylesheet is 18 bytes, over css.inline_limit (10)'
+# A literal {{ in an inlined file stays literal and is not read as a tag.
+printf 'a::after{content:"{{title}}"}' >"$SITE/big.css"
+sed -i.bak 's/^inline_limit = 10$/inline_limit = 0/' "$SITE/site.toml"
+build --quiet
+status 0
+contains a/index.html '<style>a::after{content:"{{title}}"}</style>'
+# Without a [css] table, nothing is fingerprinted, minified or recorded.
+printf 'dist = "dist"\ntemplates = "templates"\nskeleton = "skeleton.html"\n' >"$SITE/site.toml"
+printf '<html><head><title></title></head><body><main></main></body></html>\n' >"$SITE/skeleton.html"
+build --quiet
+status 0
+contains style.css 'body { color : red ; }'
+src_has manifest.json '"inline_styles": []'
+# Unknown [css] keys warn.
+printf '[css]\nminfy = true\n' >>"$SITE/site.toml"
+build
+status 0
+err_has "unknown key 'css.minfy' in [css]"

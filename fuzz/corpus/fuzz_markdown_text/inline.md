@@ -1,0 +1,3 @@
+~~strike~~ and ~single~ and ~~~three~~~ and ==mark== and =not= and a = b == c.
+
+**bold ~~both~~** *em ==mark==*

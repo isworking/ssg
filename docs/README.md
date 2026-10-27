@@ -3,9 +3,14 @@
 | | |
 | --- | --- |
 | [getting-started.md](getting-started.md) | Tutorial: a first site, templates, a series with navigation, a toc, `.assetignore`, building, previewing, deploying (Cloudflare Workers, nginx, plain static hosts) |
-| [configuration.md](configuration.md) | `site.toml` reference, what gets published, `.assetignore` and `ignore` rules, nested checkouts, dist and cleaning, sitemap |
+| [configuration.md](configuration.md) | `site.toml` reference, what gets published, `.assetignore` and `ignore` rules, nested checkouts, dist and cleaning, scheduled pages, data files, pagination, redirects, sitemap, feed, robots and taxonomies |
 | [templates.md](templates.md) | Frontmatter, `{{key}}`, `{{extend}}`, `{{include}}`, `{{if}}`, escapes, built-in keys, navigation and sorting, the skeleton, drafts |
 | [markdown.md](markdown.md) | The markdown dialect: CommonMark, GFM and other extensions, heading ids, raw HTML and sanitizing, the `.txt` output |
+| [plugins.md](plugins.md) | Plugin protocol 1: `[plugin.<name>]`, hooks, failure handling, and the highlight, images and search plugins |
+| [deploy.md](deploy.md) | `--target`: the Cloudflare worker, `vercel.json` and nginx files generated for content negotiation, and the headers they send |
+| [stability.md](stability.md) | What 1.x promises not to change, and what it does not |
+| [migrating-from-0.2.md](migrating-from-0.2.md) | Upgrading a 0.2 site to 1.0: what changes in the output and how to get the old one back |
+| [../CHANGELOG.md](../CHANGELOG.md) | Every change from 0.2 to 1.0.0 |
 | [cli.md](cli.md) | `ssg` and `ssg render`: flags, exit codes, warnings and errors, environment |
 | [../man/ssg.1](../man/ssg.1) | Manual page for the command (`man ssg`) |
 | [../man/ssg.5](../man/ssg.5) | Manual page for the site format (`man 5 ssg`) |

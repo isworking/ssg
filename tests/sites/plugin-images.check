@@ -1,0 +1,57 @@
+# ssg-plugin-images (asset), with a stand-in for ImageMagick so the test needs no image tools
+IM=$(dirname "$SSG")/ssg-plugin-images
+if [ ! -x "$IM" ]; then echo "skip: no $IM (built with -DSSG_PLUGINS=OFF?)"; else
+FAKE=$TMP/fake-magick
+mkdir -p "$FAKE" "$TMP/no-tools"
+cat >"$FAKE/magick" <<'SH'
+#!/bin/sh
+# identify -format %w FILE[0]  -> the width; anything else: write "<width>px" to the last argument
+if [ "$1" = identify ]; then echo 1000; exit 0; fi
+for out; do :; done
+printf 'resized:%s' "$(cat "$2" 2>/dev/null; echo "$@")" >"$out"
+SH
+chmod +x "$FAKE/magick"
+minimal_site
+printf '[plugin.images]\npath = "%s"\nwidths = [960, 480, 1200]\n' "$IM" >>"$SITE/site.toml"
+mkdir -p "$SITE/photos"
+printf 'jpegdata' >"$SITE/photos/cat.jpg"
+printf 'gifdata' >"$SITE/photos/spin.gif"
+printf -- '---\ntitle: P\n---\n![a]({{asset "photos/cat-480.jpg"}})\n' >"$SITE/index.md"
+OLDPATH=$PATH
+PATH="$FAKE:$OLDPATH"
+build --quiet
+rc1=$rc
+PATH=$OLDPATH
+[ "$rc1" -eq 0 ] && ok || bad "build failed: $(cat "$ERR")"
+has photos/cat.jpg
+has photos/cat-480.jpg
+has photos/cat-960.jpg
+lacks photos/cat-1200.jpg
+lacks photos/spin-480.gif
+contains photos/cat-480.jpg '-resize 480x -quality 80'
+# the new files are assets: {{asset}} fingerprints them and the manifest lists them
+omits index.html '{{asset'
+contains index.html '/photos/cat-480.'
+grep -qF '"path": "photos/cat-960.jpg"' "$SITE/manifest.json" && ok || bad "manifest lacks the resized image"
+# format and quality
+printf 'format = "webp"\nquality = 55\nextensions = ["jpg", "gif"]\n' >>"$SITE/site.toml"
+sed -i.bak '/asset/d' "$SITE/index.md"
+PATH="$FAKE:$OLDPATH"
+build --quiet
+rc1=$rc
+PATH=$OLDPATH
+[ "$rc1" -eq 0 ] && ok || bad "webp build failed: $(cat "$ERR")"
+has photos/cat-480.webp
+has photos/spin-480.webp
+lacks photos/cat-480.jpg
+contains photos/cat-480.webp '-quality 55'
+# no tool at all: a warning, no variants, a good build
+PATH="$TMP/no-tools"
+build --quiet
+rc1=$rc
+PATH=$OLDPATH
+[ "$rc1" -eq 0 ] && ok || bad "build without tools failed: $(cat "$ERR")"
+err_has 'no image tool found'
+lacks photos/cat-480.webp
+has photos/cat.jpg
+fi

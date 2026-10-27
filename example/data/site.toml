@@ -1,0 +1,3 @@
+# Available to every page as {{data.site.<key>}}.
+author = "Rajdeep"
+elsewhere = "https://example.com/about"

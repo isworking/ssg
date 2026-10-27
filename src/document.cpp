@@ -35,7 +35,7 @@ size_t scan_key(std::string_view s, size_t i) {
   return i;
 }
 
-enum class Tok { Text, Key, Extend, Include, If, IfNot, Else, End };
+enum class Tok { Text, Key, Extend, Include, Asset, Inline, If, IfNot, Else, End };
 
 struct Token {
   Tok kind = Tok::Text;
@@ -54,7 +54,9 @@ size_t parse_tag(std::string_view s, size_t i, Token& tok) {
   const size_t j = skip_blanks(s, i + 2);
 
   const std::pair<std::string_view, Tok> directives[] = {{"extend", Tok::Extend},
-                                                          {"include", Tok::Include}};
+                                                          {"include", Tok::Include},
+                                                          {"asset", Tok::Asset},
+                                                          {"inline", Tok::Inline}};
   for (const auto& [word, kind] : directives) {
     if (s.substr(j, word.size()) != word) continue;
     const size_t k = skip_blanks(s, j + word.size());
@@ -189,6 +191,7 @@ ParsedDoc parse_template_file(const std::filesystem::path& path) {
 
 struct Ctx {
   const SiteConfig* cfg = nullptr;  // null: {{include}} stays as written
+  const AssetHooks* hooks = nullptr;  // null: {{asset}} and {{inline}} stay as written
   std::string source;               // for error messages
   bool final_pass = false;          // false: only keys are filled, other tags kept as written
   std::vector<std::string> keys;    // keys being expanded, outermost first
@@ -197,6 +200,7 @@ struct Ctx {
   // Shallowest index into `keys` that the current expansion left as written (a cycle), or npos.
   size_t low = std::string::npos;
   std::vector<std::string> includes;
+  std::set<std::string> unknown;  // final-pass keys with no definition
   size_t depth = 0;
 };
 
@@ -263,6 +267,7 @@ class Evaluator {
           if (expand_key(t.text, v)) {
             out += v;
           } else {
+            if (ctx_.final_pass && !vars_.count(t.text)) ctx_.unknown.insert(t.text);
             out += "{{" + t.text + "}}";
           }
           break;
@@ -275,6 +280,26 @@ class Evaluator {
             out += t.raw;
           }
           break;
+        case Tok::Asset:
+        case Tok::Inline: {
+          const auto& hook = t.kind == Tok::Asset ? (ctx_.hooks ? ctx_.hooks->asset : nullptr)
+                                                  : (ctx_.hooks ? ctx_.hooks->inline_css : nullptr);
+          if (!ctx_.final_pass || !hook) {
+            out += t.raw;
+            break;
+          }
+          try {
+            std::string v = hook(t.text);
+            // Whatever the file holds is text: a {{ in it must not start a tag later on.
+            for (size_t at = v.find("{{"); at != std::string::npos; at = v.find("{{", at + 1)) {
+              v.replace(at, 2, kOpenSentinel);
+            }
+            out += v;
+          } catch (const std::runtime_error& e) {
+            fail(e.what());
+          }
+          break;
+        }
         default: out += t.raw; break;
       }
       if (out.size() > kMaxOutput) fail("template expansion larger than 64 MiB");
@@ -491,6 +516,8 @@ std::vector<Segment> parse_segments(std::string_view s) {
       case Tok::Key: out.push_back({true, std::move(t.text)}); break;
       case Tok::Extend: out.push_back({true, "extend:" + t.text}); break;
       case Tok::Include: out.push_back({true, "include:" + t.text}); break;
+      case Tok::Asset: out.push_back({true, "asset:" + t.text}); break;
+      case Tok::Inline: out.push_back({true, "inline:" + t.text}); break;
       case Tok::If: out.push_back({true, "if:" + t.text}); break;
       case Tok::IfNot: out.push_back({true, "if-not:" + t.text}); break;
       case Tok::Else: out.push_back({true, "else:"}); break;
@@ -575,13 +602,15 @@ std::string interpolate(std::string_view s, const std::map<std::string, std::str
 
 RenderedDoc render_extended(const SiteConfig& cfg, const std::filesystem::path& source_path,
                             const ParsedDoc& doc,
-                            const std::map<std::string, std::string>& defaults) {
+                            const std::map<std::string, std::string>& defaults,
+                            const AssetHooks* hooks) {
   Vars vars = doc.vars;
   std::string body = doc.body;
   std::string extend = doc.extend_file;
   std::set<std::string> seen;
   Ctx ctx;
   ctx.cfg = &cfg;
+  ctx.hooks = hooks;
   ctx.source = source_path.string();
 
   while (!extend.empty()) {
@@ -612,6 +641,7 @@ RenderedDoc render_extended(const SiteConfig& cfg, const std::filesystem::path& 
   }
   out.markdown = Evaluator(out.vars, ctx).eval(body);
 
+  out.unknown_keys.assign(ctx.unknown.begin(), ctx.unknown.end());
   unescape(out.markdown);
   for (auto& kv : out.vars) unescape(kv.second);
   return out;

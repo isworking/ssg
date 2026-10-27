@@ -37,11 +37,14 @@ skeleton = "skeleton.html"     # required
 base_url = "https://example.com"
 clean = true
 nested_repos = false
+follow_symlinks = false
 ignore = ["*.psd", "drafts/"]
 
 [markdown]
 html = true
 scripts = false
+allow_tags = []
+allow_attrs = []
 heading_ids = true
 autolinks = true
 extensions = true
@@ -76,6 +79,16 @@ When set,
 .Pa sitemap.xml
 is written; see
 .Sx SITEMAP .
+.It Ic manifest No (string or false)
+Where
+.Pa manifest.json
+is written, relative to the content directory.
+Default: beside
+.Ic dist .
+.Li false
+turns it off.
+See
+.Sx MANIFEST .
 .It Ic clean No (boolean, default true)
 Empty dist before building, but only if
 .Xr ssg 1
@@ -83,12 +96,27 @@ owns it: it holds the
 .Pa .ssg-dist
 marker, which a build writes into a dist that is missing, empty or already marked.
 A non-empty dist without the marker is built over with a warning.
+.It Ic future No (boolean, default false)
+Build pages whose
+.Ic date
+is after the build date.
+Without it they are held back like drafts.
+.It Ic redirect_pages No (boolean, default false)
+Also write a meta-refresh page at the old URL of each redirect; see
+.Sx REDIRECTS .
 .It Ic nested_repos No (boolean, default false)
 Also build subdirectories that contain a
 .Pa .git
 file or directory.
 By default they are skipped with a note, so a tool checked out inside the site (for
 example by CI) is not published.
+.It Ic follow_symlinks No (boolean, default false)
+Copy, or render if the name ends in
+.Pa .md ,
+files that are symbolic links to a file.
+By default they are skipped with a note, so a link in untrusted content cannot publish
+a file outside the site.
+Symbolic links to directories are never followed.
 .It Ic ignore No (array of strings)
 Patterns in
 .Pa .assetignore
@@ -108,27 +136,41 @@ False escapes it, so it shows as text.
 .It Ic scripts No (boolean, default false)
 With
 .Ic html
-on, let
+on, false passes raw HTML through an allow-list: only known-harmless tags and attributes
+(see
+.Ic allow_tags
+and
+.Ic allow_attrs )
+are kept.
+Other tags, such as
 .Li <script> ,
 .Li <iframe> ,
-.Li <object> ,
-.Li <embed> ,
-.Li <style>
-and similar elements,
-.Li on*
-attributes and
+.Li <style> ,
+.Li <form> ,
+.Li <svg>
+and custom elements, are escaped so they show as text; other attributes are dropped, as is
+any raw HTML attribute holding a
 .Li javascript: ,
 .Li vbscript: ,
 .Li file:
-and non-image
+or non-image
 .Li data:
-URLs through.
-False escapes those elements, drops those attributes and any raw HTML attribute holding such
-a URL, and turns such URLs in markdown links and images into
+URL.
+The same URLs in markdown links and images become
 .Li href="#"
 or
 .Li src="" .
 HTML comments are removed.
+True turns all of this off and passes everything through.
+.It Ic allow_tags No (array of strings)
+Extra tag names to allow in raw HTML, for example
+.Li ["my-card"] .
+.It Ic allow_attrs No (array of strings)
+Extra attribute names to allow on any allowed tag, for example
+.Li ["style"] .
+Event handlers and
+.Li srcdoc
+are never allowed, and values are still checked for dangerous URLs.
 .It Ic heading_ids No (boolean, default true)
 Give every heading a GitHub-style id, deduplicated with
 .Li -1 ,
@@ -153,9 +195,155 @@ Wrap column of the
 output.
 0 disables wrapping.
 .El
+.Ss The taxonomy tables
+A
+.Li [taxonomy.tags]
+table groups pages by a comma-separated frontmatter value (here
+.Ic tags ) .
+It generates an index page at
+.Pa /tags/
+and a page for each term at
+.Pa /tags/term/
+from
+.Pa taxonomy.md
+and
+.Pa term.md
+in the templates directory (a bare list when those are missing).
+.Bl -tag -width Ds
+.It Ic key No (string)
+The frontmatter key; default the table name.
+.It Ic path No (string)
+The URL directory; default the table name.
+.It Ic title No (string)
+The index page's title; default the capitalised name.
+.El
+.Pp
+Both templates see
+.Ic taxonomy ,
+.Ic taxonomy_title
+and
+.Ic term_count ;
+the index sees
+.Ic terms ,
+a markdown list of the terms with their page counts; a term page sees
+.Ic term ,
+.Ic term_slug ,
+.Ic term_url ,
+.Ic taxonomy_url
+and
+.Ic pages ,
+a markdown list of its pages, newest first.
+Every page gets
+.Ic tags_links ,
+the list of its own terms (named after the table).
+.Ss The feed table
+The table's presence writes
+.Pa feed.xml ,
+an Atom 1.0 feed of the dated pages, newest first, with absolute URLs.
+It needs
+.Ic base_url .
+.Bl -tag -width Ds
+.It Ic section No (string)
+Only pages under this directory; default every dated page.
+.It Ic title No (string)
+The feed title; default the host of
+.Ic base_url .
+.It Ic author No (string)
+The feed author; default the title.
+.It Ic limit No (integer, default 20)
+The number of newest entries kept.
+.El
+.Pp
+Pages with a false
+.Ic feed
+key and the 404 page are left out.
+Entries use the page's
+.Ic title ,
+.Ic date ,
+.Ic description
+and
+.Ic author .
+.Ic feed_url
+holds the feed's address while one is written.
+A hand-written
+.Pa feed.xml
+wins, with a warning.
+.Ss The robots table
+.Pa robots.txt
+is written on every build unless the content directory has one.
+.Bl -tag -width Ds
+.It Ic enabled No (boolean, default true)
+False writes no file.
+.It Ic disallow No (array of strings)
+Paths, each starting with
+.Sq / ,
+to disallow for all robots; without any the file says
+.Li Allow: / .
+.It Ic sitemap No (boolean, default true)
+Add a
+.Li Sitemap:
+line when
+.Ic base_url
+is set.
+.El
+.Pp
+A hand-written
+.Pa robots.txt
+wins; with a
+.Li [robots]
+table present that is a warning.
 .Pp
 Unknown keys and tables are warnings, not errors.
 A key's type must match: a string where a boolean is expected is an error.
+.Ss The deploy and headers tables
+Hosting adapters, written by
+.Nm ssg Cm build
+when a target is set (see
+.Fl \-target
+in
+.Xr ssg 1 ) .
+.Bl -tag -width Ds
+.It Ic deploy.target No (string)
+.Qq cloudflare ,
+.Qq vercel
+or
+.Qq nginx .
+.It Ic headers.link No (boolean, default true)
+Send a
+.Li Link
+header with rel=alternate pointing at the Markdown variant of each HTML page.
+.It Ic headers.format No (boolean, default true)
+Send
+.Li X-SSG-Format
+(html, md or txt).
+.It Ic headers.version No (boolean, default false)
+Send
+.Li X-SSG-Version .
+.It Ic headers.page_cache No (string, default Qq public, max-age=300 )
+.Li Cache-Control
+for pages; empty sends none.
+Fingerprinted files are always immutable.
+.El
+.Pp
+.Li Vary: Accept
+and the content type are always sent.
+.Ss The css table
+CSS is copied as is unless these opt in.
+.Bl -tag -width Ds
+.It Ic minify No (boolean, default false)
+Minify every
+.Pa .css
+file before it is published, fingerprinted or inlined: comments (except
+.Li /*! ... */ )
+are dropped and whitespace is collapsed.
+Strings, urls and spaces inside
+.Li calc()
+are kept.
+.It Ic inline_limit No (integer, default 16384)
+Warn when a stylesheet embedded with
+.Li {{inline}}
+is larger than this many bytes; 0 never warns.
+.El
 .Ss TOML subset
 Supported:
 .Li #
@@ -171,14 +359,94 @@ strings with the escapes
 strings,
 .Li true ,
 .Li false ,
-integers (optional sign,
-.Sq _
-separators), and arrays of strings, which may span lines and end with a comma.
+integers, and arrays, which may span lines and end with a comma.
 A leading UTF-8 BOM and CRLF line endings are accepted.
+.Bl -bullet
+.It
+Dotted keys and headers:
+.Li markdown.html = false
+is the same as
+.Li html = false
+under
+.Li [markdown] ,
+and
+.Li [a.b]
+is a table inside
+.Li a .
+Each part is bare or quoted.
+A header's parent tables need no header of their own.
+.It
+Arrays hold any supported value, other arrays included:
+.Li [1, [\(dqa\(dq], true] .
+Known keys still check their contents:
+.Ic ignore
+must be an array of strings.
+Arrays nest at most 64 deep.
+.It
+Integers are decimal, with an optional sign, no leading zeros, and
+.Sq _
+only between two digits, over the full 64-bit range.
+.It
+Strings are single-line.
+Raw control characters other than tab are errors; write them as escapes.
+Comments may not hold them either.
+.El
 .Pp
-Not supported, each an error: dotted keys, floats, dates, inline tables, arrays of tables,
-multi-line strings, arrays of anything but strings.
-Duplicate keys and tables are errors.
+Not supported, each an error: floats, dates and times, hexadecimal, octal and
+binary integers, inline tables, arrays of tables, multi-line strings.
+.Pp
+Each name is defined once.
+These are errors:
+.Bl -bullet
+.It
+a key given twice
+.Pq Dq duplicate key \(aqa\(aq ,
+or a
+.Li [table]
+header given twice
+.Po
+.Dq duplicate table [a] ,
+reported on the repeated header's line
+.Pc ;
+.It
+a key that is also a table:
+.Dq \(aqa\(aq is not a table ,
+.Dq \(aqa\(aq is already a table ,
+.Dq table [a] was already defined as a value ;
+.It
+a table made by dotted keys that later gets a header, or the other way round:
+.Dq table [a] was already defined by dotted keys ,
+.Dq table [a.b] can't be extended with dotted keys .
+.El
+.Ss Plugin tables
+.Li [plugin.\& Ns Ar name Ns Li \&]
+tables declare plugins.
+ssg runs
+.Pa ssg-plugin- Ns Ar name
+(found on
+.Ev PATH ,
+or at
+.Li path )
+in the order the tables appear.
+.Li enabled ,
+.Li path ,
+.Li required
+(default true) and
+.Li timeout
+(seconds, default 30) are ssg's own; every other key is the plugin's
+configuration, checked against its
+.Fl \-meta .
+The plugin protocol is frozen from 1.0.0-rc.1; see
+.Pa docs/plugins.md
+and
+.Pa docs/stability.md .
+.Li plugin
+itself only holds such tables:
+.Li plugin = 1
+gives
+.Dq \(aqplugin\(aq must be a table, like [plugin.<name>] ,
+and a key directly in it gives
+.Dq [plugin] holds one table per plugin, like [plugin.x] .
 .Sh PUBLISHING
 The content directory is walked top-down.
 .Bl -bullet
@@ -217,6 +485,10 @@ A directory that contains a
 .Pa .git
 entry is skipped unless
 .Ic nested_repos
+is true.
+.It
+A symbolic link to a file is skipped with a note unless
+.Ic follow_symlinks
 is true.
 .It
 Paths matched by
@@ -437,6 +709,22 @@ Anywhere else it is left as written.
 Insert template
 .Ar name
 here.
+.It Li {{asset \(dqpath\(dq}}
+The URL of a copy of the asset
+.Ar path
+(relative to the content directory) named by a hash of its content, e.g.
+.Pa /style.1a2b3c4d5e.css .
+The file is also published under its own name.
+It is an error if no such asset exists.
+.It Li {{inline \(dqpath.css\(dq}}
+The text of a stylesheet, for a
+.Li <style>
+element.
+It is an error if the file contains
+.Li </style ,
+and a warning if it is larger than
+.Ic css.inline_limit .
+The manifest records a Content-Security-Policy hash of each.
 .It Li {{if key}} ... {{else}} ... {{end}}
 Keep the first part if
 .Ar key
@@ -542,9 +830,29 @@ when it is set.
 .It Ic word_count
 Words in the page's plain text, template text included.
 A word is a run of non-space bytes with at least one ASCII letter or digit or non-ASCII
-byte.
+byte; each Han, kana or CJK extension character counts as one word of its own.
 .It Ic reading_time
-Minutes at 200 words a minute, rounded up, at least 1.
+Minutes at 200 words or 500 CJK characters a minute, rounded up, at least 1.
+.It Ic absolute_url , Ic canonical_url
+.Ic base_url
+followed by the page URL; defined only when
+.Ic base_url
+is set.
+A page may set
+.Ic canonical_url
+itself.
+.It Ic feed_url
+The address of
+.Pa feed.xml ,
+defined only while a feed is written.
+.It Ic og_title
+The page's
+.Ic title ,
+or its navigation title when it has none.
+.It Ic og_description
+The page's
+.Ic description ,
+or empty.
 .It Ic toc
 Table of contents; see
 .Sx TABLE OF CONTENTS .
@@ -598,6 +906,9 @@ When true, the page is built only with
 It may be set by a template.
 .It Ic sitemap
 When defined and false, the page is left out of
+.Pa sitemap.xml .
+.It Ic noindex
+When true, the page is left out of
 .Pa sitemap.xml .
 .It Ic content
 Set by
@@ -762,6 +1073,90 @@ The
 output renders the same tree as plain text: setext-style underlined headings, links as
 .Li text <url> ,
 lists and tables laid out, wide characters counted as two columns.
+.Sh DATA FILES
+Files named
+.Pa *.toml
+or
+.Pa *.json
+directly inside
+.Pa data/
+in the content directory are not published.
+They are read before the build and flattened into keys prefixed with the file name:
+.Pa data/site.toml
+holding
+.Li author = "Ann"
+gives
+.Li {{data.site.author}} .
+Tables and objects nest with a dot.
+Array items are numbered
+.Pq Li data.site.tags.0
+and the array's size is
+.Li data.site.tags.length .
+Booleans are
+.Li true
+or
+.Li false ,
+numbers keep their text and JSON
+.Li null
+is empty.
+Data has the lowest priority, so a page's frontmatter can override it.
+Invalid data stops the build.
+.Sh PAGINATION
+.Li paginate: "N"
+in the frontmatter of an
+.Pa index.md
+shows N children per page.
+The index page is page 1; further pages are generated at
+.Pa page/2/ ,
+.Pa page/3/
+and so on below its directory, from the same source.
+Each page's
+.Ic children
+holds its own slice.
+.Ic page_number
+and
+.Ic page_count
+number the pages;
+.Ic prev_page_url
+and
+.Ic next_page_url
+are empty at the ends.
+A value that is not a whole number from 1 to 100000, or a page that is not an
+.Pa index.md ,
+is ignored with a warning.
+.Sh REDIRECTS
+.Pa redirects.txt
+in the content directory is not published.
+Each line is
+.Ar from to Op Ar status ;
+blank lines and
+.Sq #
+comments are ignored.
+.Ar from
+starts with
+.Sq / ,
+.Ar to
+is a path starting with
+.Sq /
+or an http(s) URL, and
+.Ar status
+is 301 (the default), 302, 303, 307 or 308.
+Bad lines and repeated sources are skipped with a warning.
+The rules are written to
+.Pa _redirects
+(one
+.Ar from to status
+line each, as Cloudflare Pages and Netlify read it) and to the
+.Li redirects
+array of the manifest.
+A
+.Pa _redirects
+in the content directory wins, with a warning.
+With
+.Li redirect_pages = true
+in
+.Pa site.toml ,
+rules without a wildcard also get a page with a meta refresh at the old URL.
 .Sh SITEMAP
 With
 .Ic base_url
@@ -782,10 +1177,71 @@ starts with
 or a blank).
 Pages with a false
 .Ic sitemap
-key are left out.
+key, a true
+.Ic noindex
+key, and the
+.Li 404
+page are left out.
 A
 .Pa sitemap.xml
 in the content directory is copied instead, with a warning.
+.Sh MANIFEST
+Every build writes
+.Pa manifest.json
+beside
+.Ic dist ,
+never inside it, so it is not deployed.
+It is a JSON object with
+.Li schema
+(1; fields are only added within a schema),
+.Li ssg_version ,
+.Li build_date
+(honours
+.Ev SOURCE_DATE_EPOCH ) ,
+.Li base_url ,
+.Li pages ,
+.Li assets ,
+.Li inline_styles ,
+.Li redirects
+and
+.Li plugins .
+Each page has
+.Li url ,
+.Li source ,
+.Li title ,
+.Li date
+and
+.Li outputs ,
+three objects with
+.Li path ,
+.Li format
+.Pq html , md , txt
+and
+.Li content_type .
+Each asset has
+.Li path ,
+.Li output
+and
+.Li size ;
+one used through
+.Li {{asset}}
+also has
+.Li fingerprint ,
+.Li fingerprint_size
+and
+.Li immutable .
+.Li inline_styles
+lists each
+.Li {{inline}}d
+stylesheet with
+.Li path ,
+.Li size
+and
+.Li csp_hash
+.Pq Li sha256-... .
+A file that exists at the target and was not written by
+.Xr ssg 1
+is left alone with a warning.
 .Sh EXAMPLES
 A series: a section index and two posts that share a layout.
 .Bd -literal -offset indent

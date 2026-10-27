@@ -1,0 +1,53 @@
+# serve: static files, 404.html, no path escape, reload version bumps on change.
+if ! command -v curl >/dev/null 2>&1; then echo "skip serve (no curl)"; ok; return 0 2>/dev/null || exit 0; fi
+S=$TMP/serve-site
+mkdir -p "$S"
+cp "$HERE/sites/links/site.toml" "$HERE/sites/links/skeleton.html" "$S/"
+printf '# Home\n\nhi\n' >"$S/index.md"
+printf '# Gone\n' >"$S/404.md"
+printf 'body{}' >"$S/style.css"
+"$SSG" serve --port 0 "$S" >"$TMP/serve.out" 2>"$TMP/serve.err" &
+PID=$!
+URL=
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  URL=$(sed -n 's/.*at \(http:[^ ]*\).*/\1/p' "$TMP/serve.err" | head -1)
+  [ -n "$URL" ] && break
+  sleep 0.25
+done
+if [ -z "$URL" ]; then bad "serve did not start: $(cat "$TMP/serve.err")"; kill $PID 2>/dev/null; return 0 2>/dev/null || exit 0; fi
+get() { curl -s --max-time 5 --path-as-is "$@"; }
+get "$URL" | grep -q '<h1' && ok || bad "/ not served"
+get "$URL" | grep -q '/__ssg/version' && ok || bad "reload script not injected"
+get "${URL}style.css" | grep -qF 'body{}' && ok || bad "css not served"
+get -i "${URL}style.css" | grep -qi 'content-type: text/css' && ok || bad "css content type"
+get -i "${URL}style.css" | grep -q '__ssg' && bad "script injected into css" || ok
+get -i "${URL}nope/" | head -1 | grep -q '404' && ok || bad "missing page is not 404"
+get "${URL}nope/" | grep -q 'Gone' && ok || bad "404.html not used"
+[ "$(get -o /dev/null -w '%{http_code}' "${URL}../../etc/passwd")" = 404 ] && ok || bad "path escape not refused"
+[ "$(get -o /dev/null -w '%{http_code}' "${URL}%2e%2e/x")" = 404 ] && ok || bad "encoded .. not refused"
+[ "$(get -o /dev/null -w '%{http_code}' -X POST "$URL")" = 405 ] && ok || bad "POST allowed"
+v1=$(get "${URL}__ssg/version")
+sleep 1
+printf '# Home\n\nchanged\n' >"$S/index.md"
+v2=$v1
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  sleep 0.5
+  v2=$(get "${URL}__ssg/version")
+  [ "$v2" != "$v1" ] && break
+done
+[ "$v2" != "$v1" ] && ok || bad "version did not change after an edit"
+get "$URL" | grep -q 'changed' && ok || bad "edit was not rebuilt"
+kill $PID 2>/dev/null
+wait $PID 2>/dev/null
+# watch rebuilds too
+rm -rf "$S/dist"
+"$SSG" watch --quiet "$S" >/dev/null 2>"$TMP/watch.err" &
+PID=$!
+for _ in 1 2 3 4 5 6 7 8; do [ -f "$S/dist/index.html" ] && break; sleep 0.25; done
+[ -f "$S/dist/index.html" ] && ok || bad "watch did not build"
+sleep 1
+printf '# Home\n\nwatched\n' >"$S/index.md"
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do grep -q watched "$S/dist/index.html" 2>/dev/null && break; sleep 0.5; done
+grep -q watched "$S/dist/index.html" && ok || bad "watch did not rebuild on edit"
+kill $PID 2>/dev/null
+wait $PID 2>/dev/null

@@ -1,15 +1,22 @@
 # Command line
 
-`ssg` builds a content directory, or renders one markdown file. This page mirrors
+`ssg` builds a content directory, runs other commands on it, or renders one markdown file. This page mirrors
 [man/ssg.1](../man/ssg.1) (`man ssg`). The site format is in [configuration.md](configuration.md),
 [templates.md](templates.md) and [markdown.md](markdown.md), or [man/ssg.5](../man/ssg.5) in one page.
 
 ```
-ssg [--drafts] [--check-links] [--quiet] <content-dir>
+ssg [build] [--drafts] [--check-links] [--incremental] [--target <name>] [options] [<content-dir>]
+ssg init|serve|watch|check|list|clean|doctor [options] [<dir>]
+ssg new <path>
+ssg plugins list | plugins meta <name>
 ssg render [--strict] [--text] [--no-html] [--scripts|--no-scripts] [--no-extensions] <file|->
+ssg completions bash|zsh|fish
 ssg --help | --version
 ```
 
+- [Commands](#commands)
+- [Global options](#global-options)
+- [JSON output](#json-output)
 - [Building](#building)
 - [Build options](#build-options)
 - [Link checking](#link-checking)
@@ -20,6 +27,64 @@ ssg --help | --version
 - [Files](#files)
 - [Examples](#examples)
 - [Messages](#messages)
+
+## Commands
+
+The first argument is a command only if it is one of the names below; anything else is the
+legacy form, and `ssg <dir>` means `ssg build <dir>` throughout 1.x. A directory with a command's
+name is written `./list`. `<dir>` defaults to the current directory. Options go after the command.
+
+| command | |
+| --- | --- |
+| `build [dir]` | Builds the site; see [Building](#building). Takes `--drafts` and `--check-links`. |
+| `init [dir]` | Creates `dir` (if needed) with `site.toml`, `skeleton.html`, `templates/base.md`, `index.md` and a `.gitignore` holding `dist/`. Refuses if `dir/site.toml` or any of those files exists, and writes nothing then. |
+| `new <path>` | Writes `<path>.md` (`.md` is added if missing) with `title` (from the file name: `hello-world` gives "Hello world") and `date` (today, or from `SOURCE_DATE_EPOCH`) frontmatter. The path is relative to the current directory; absolute paths and `..` are refused. Refuses an existing file. |
+| `serve [dir]` | Builds, then serves dist on `127.0.0.1` (`--port`, default 8000, 0 picks a free port; `--open` opens a browser) and rebuilds when a file changes. Open pages reload themselves: ssg adds a small script to served HTML (not to the files in dist). A missing path gets the site's `/404/` page (from `404.md`) or `404.html`, with status 404. Only GET and HEAD. A build error is printed and the server keeps running. Accepts `--drafts`. |
+| `watch [dir]` | Builds, then rebuilds whenever a file changes (polling every 300 ms), incrementally: unchanged files are left alone. Accepts `--drafts`. |
+| `check [dir]` | Builds into a scratch directory (dist is untouched) and reports every warning of `build --check-links`, plus pages nothing links to (the home page and `404` are exempt), images with no or empty alt text, and `{{keys}}` that nothing defines. Findings are warnings: the exit status is 0 unless `--fail-on-warning`. Keys unknown to the skeleton aren't checked. Accepts `--drafts`. |
+| `list [dir]` | Prints each page's URL and source file, sorted by URL. Builds into a scratch directory. Accepts `--drafts`. |
+| `clean [dir]` | Empties dist, but only if it is missing, empty or holds the `.ssg-dist` marker; otherwise exit 1 and nothing is touched. |
+| `doctor [dir]` | Checks the config, that dist is safe to build into, the templates dir, that the skeleton parses, warns when `dist/.ssg-dist` would be deployed (no `.assetsignore`, `.vercelignore` or `vercel.json` next to the site or dist names it), and checks each `[plugin.<name>]` (found, `--meta` readable, protocol, config keys). Each line starts with `ok`, `warn` or `error`; exit 1 if any is an error. |
+| `plugins list` | Lists the `[plugin.<name>]` tables of `./site.toml` (or `--config`) in file order: `name  version  path`, or `disabled`, or why the plugin isn't usable. See [plugins.md](plugins.md). |
+| `plugins meta <name>` | Runs the plugin's `--meta` and prints the JSON object on one line. Exit 1 if there is no such table or the plugin can't be run. |
+| `render <file\|->` | Unchanged; see [ssg render](#ssg-render). |
+| `completions <shell>` | Prints a completion script for `bash`, `zsh` or `fish` on stdout. |
+
+## Global options
+
+Accepted by every command except `render`, after the command name (or anywhere in the legacy
+form). They may also come before it: `ssg --json build .`.
+
+| option | |
+| --- | --- |
+| `--config <file>` | Read this file instead of `<dir>/site.toml`. Relative paths inside it still resolve against `<dir>`; the file itself isn't published. |
+| `--output <dir>` | Build into `<dir>` instead of the configured dist (the same safety rules apply). |
+| `--base-url <url>` | Override `base_url`. |
+| `--verbose` | One stderr line per built page and copied file. |
+| `--target <name>` | Also write the deploy files for `cloudflare`, `vercel` or `nginx` (build only; overrides `[deploy] target`). See [deploy.md](deploy.md). An unknown name is a usage error (exit 2). |
+| `--force` | Let `--target` replace adapter files that already exist and differ. Without it they are kept, with a warning. |
+| `--incremental` | Keep dist instead of emptying it: a file whose bytes are unchanged is not rewritten (its mtime survives), a changed one is replaced, and files the build no longer produces are removed. The result is the same as a clean build; the whole site is still processed in memory, so what is saved is writing and a dist that is never empty mid-build. Only for a dist ssg owns (the `.ssg-dist` marker); with `clean = false` nothing is removed. `serve` and `watch` always build this way. Plugins' `post_build` files are rewritten each time. |
+| `--quiet`, `-q` | No summary line and no notes. Warnings and errors still print. |
+| `--color auto\|always\|never` | Colour the `warning:` label. `auto` (default) colours only a terminal on stderr and not when `NO_COLOR` is set or `TERM=dumb`. |
+| `--json` | A machine-readable result on stdout; see [JSON output](#json-output). Messages stay on stderr. |
+| `--fail-on-warning` | Exit 3 if any warning was printed (the work is still done). |
+| `--no-plugins` | Don't start the plugins in `site.toml`; the manifest's `plugins` is then empty. |
+
+`--flag=value` works for options that take a value. `--help` / `-h` anywhere prints the usage.
+
+## JSON output
+
+With `--json`, `build`, `check`, `list`, `clean`, `doctor`, `plugins list`, `init` and `new` print one
+line of JSON on stdout. Every object has `"schema":1` and `"ok"`; fields are only ever added
+within schema 1. On an error (exit 1) the object is `{"schema":1,"ok":false,"error":"..."}`;
+usage errors print no JSON.
+
+- `build`: `command`, `dist`, `manifest` (path or `null`), `pages` (`url`, `source`, `output`), `files` (copied, relative to
+  dist), `warnings` (`file`, `message`; `file` is `""` when no file is meant, `site.toml:LINE`
+  for config warnings) and `timings_ms` (`total`).
+- `check`: `pages` (a count) and `warnings`. `list`: `pages` and `warnings`.
+- `doctor`: `checks` (`status`, `name`, `message`). `plugins`: `plugins` (`name`, `enabled`, `required`, `resolved`, and when resolved `path`, `version`, `protocol`, `hooks`; `error` if not).
+- `clean`: `dist`. `init`: `created`. `new`: `created`.
 
 ## Building
 
@@ -40,7 +105,7 @@ A build runs in this order:
    - the dist and templates directories, the skeleton, the top-level `site.toml`;
    - paths matched by `.assetignore` files or the `ignore` key;
    - directories that contain a `.git` entry, unless `nested_repos = true`;
-   - the contents of symlinks to directories.
+   - the contents of symlinks to directories, and symlinks to files unless `follow_symlinks = true`.
 5. Empty dist if `clean` is true and ssg created it (it holds a `.ssg-dist` marker).
 6. Copy assets.
 7. Render pages: a first pass over all pages resolves frontmatter and templates, then the real
@@ -54,7 +119,8 @@ An error stops the build at once. Assets and pages written before it stay in dis
 ## Build options
 
 Options and `<content-dir>` may come in any order. There is no `--` terminator: pass a directory
-whose name starts with `-` as `./-dir`, and one named `render` as `./render`.
+whose name starts with `-` as `./-dir`, and one named after a command (`render`, `list`, ...) as
+`./render`. Also see [Global options](#global-options).
 
 | option | |
 | --- | --- |
@@ -96,8 +162,8 @@ escapes raw HTML, `--no-html --strict` doesn't.
 | `--strict` | Plain CommonMark 0.31.2: raw HTML and scripts pass through unchanged, no extensions, no heading ids, no bare autolinks. Same as `--scripts --no-extensions` plus heading ids and autolinks off. |
 | `--text` | Plain text instead of HTML, as in the `.txt` output, wrapped at 80 columns. |
 | `--no-html` | Escape raw HTML so it shows as text. |
-| `--scripts` | Let `<script>` and similar elements, `on*` attributes, and `javascript:`, `vbscript:`, `file:` and non-image `data:` URLs through. |
-| `--no-scripts` | Escape those elements, drop those attributes and neutralize those URLs. The default, so it only undoes an earlier `--scripts` or `--strict`. |
+| `--scripts` | Turn the raw-HTML allow-list off: `<script>` and similar elements, `on*` attributes, and `javascript:`, `vbscript:`, `file:` and non-image `data:` URLs pass through. |
+| `--no-scripts` | Escape tags and drop attributes that are not on the allow-list, and neutralize those URLs. The default, so it only undoes an earlier `--scripts` or `--strict`. |
 | `--no-extensions` | CommonMark syntax only: no tables, strikethrough, task lists, footnotes, definition lists, containers, alerts, `==mark==`, heading attributes or bare autolinks. Heading ids stay on; raw HTML is still sanitized. |
 
 `render` has no way to set the text width or to turn off heading ids alone; a site sets those in
@@ -123,12 +189,13 @@ raw <www.example.com>
 
 ## --help, --version
 
-Recognised only as the first argument; anywhere else they are unknown options (exit 2).
+`--version` is recognised only as the first argument; elsewhere it is an unknown option (exit 2).
+`--help` also works after a command.
 
 | option | |
 | --- | --- |
 | `--help`, `-h` | Usage and an option summary on stdout. |
-| `--version` | `ssg 0.2.0` on stdout. Later arguments are ignored. |
+| `--version` | `ssg 1.0.0-dev (abc1234)` on stdout: the version, then the git commit it was built from (`abc1234-dirty` with uncommitted changes; left out when unknown). Source builds carry the `-dev` suffix; release builds drop it. Later arguments are ignored. |
 
 ## Exit status
 
@@ -137,6 +204,7 @@ Recognised only as the first argument; anywhere else they are unknown options (e
 | 0 | Success, including builds that printed warnings. |
 | 1 | An error: configuration, template, unsafe dist, or file I/O. |
 | 2 | Bad usage; the usage text goes to stderr. |
+| 3 | Warnings were printed and `--fail-on-warning` was given. |
 
 ## Environment
 
@@ -149,7 +217,8 @@ else is ignored with a warning and the current time is used.
 SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) ssg .
 ```
 
-No other environment variables are read.
+`NO_COLOR`: any non-empty value stops `--color auto` from colouring (`--color always` still does).
+`TERM=dumb` does the same. No other environment variables are read.
 
 ## Files
 
@@ -224,10 +293,25 @@ Each is followed by the usage text. `ssg` with no arguments prints only the usag
 
 | message | |
 | --- | --- |
-| `unknown option <opt>` | Includes `--` and options of the other mode (`ssg render --drafts`). |
+| `unknown option <opt>` | Includes `--` and options a command doesn't take (`ssg render --drafts`, `ssg clean --port 1`). |
+| `<option> needs a value` | `--config`, `--output`, `--base-url`, `--color` or `--port` ended the arguments. |
+| `--color wants auto, always or never`, `--port wants a number from 0 to 65535` | |
 | `one content dir only` | |
+| `plugins needs list or meta <name>`, `new takes one path`, `completions needs bash, zsh or fish` | |
 | `render takes one input` | |
 | `render needs a file or -` | |
+
+### Plugins (exit 1)
+
+| message | |
+| --- | --- |
+| `plugin '<name>': ssg-plugin-<name> is not on PATH ...` | Or `<path> is not an executable file`. With `required = false`, a warning instead. |
+| `plugin '<name>': needs plugin protocol N, but this ssg speaks 1` | Also `--meta` problems: it timed out, exited non-zero, printed no JSON, or names another plugin. |
+| `plugin '<name>', hook '<hook>': <what>` | `timed out after Ns`, `exited before answering; it exited with status N`, `answered with invalid JSON`, `answered with the wrong id`, `failed: <the plugin's error>`, `the result must be a string`, and for `asset`, `'<path>' is not a path inside dist`. |
+| `[plugin.<name>] 'key' must be int, not string` | A config value of the wrong type for the plugin's `--meta`. |
+| `[plugin.<name>] timeout must be a whole number of seconds, 1 to 86400` | Also `enabled`, `required` and `path`. |
+| `warning: [plugin.<name>] has the key 'k', which <name> does not declare` | |
+| `warning: plugin <name>: <text>` | The plugin wrote `<text>` to stderr. |
 
 ### site.toml (exit 1)
 
@@ -235,8 +319,8 @@ Each is followed by the usage text. `ssg` with no arguments prints only the usag
 | --- | --- |
 | `missing site.toml in <dir>` | Also what a mistyped or non-directory `<dir>` gives. |
 | `site.toml must set dist, templates, and skeleton` | |
-| `site.toml:<N>: <message>` | Syntax or type error on line N: `'clean' must be a boolean`, `duplicate key 'dist'`, `duplicate table [markdown]` (names the line after the repeated header), `expected ] after table name`, `dotted keys are not supported`, `only integers are supported`, `inline tables are not supported`, `multi-line strings are not supported`, `arrays may only hold strings`, `unterminated string`, `unknown escape \q`, `expected end of line`, `'text_width' must be between 0 and 100000`, ... See [configuration.md](configuration.md). |
-| `warning: site.toml:<N>: unknown key '<k>'` | Also `unknown key '<k>' in [markdown]` and `unknown table [<t>]`. Keys inside an unknown table are ignored without further warnings. |
+| `site.toml:<N>: <message>` | Syntax or type error on line N: `'clean' must be a boolean`, `'ignore' must be an array of strings`, `duplicate key 'dist'`, `duplicate table [markdown]` (names the repeated header's line), `'a' is not a table`, `'a' is already a table`, `table [a] was already defined as a value`, `table [a] was already defined by dotted keys`, `table [a.b] can't be extended with dotted keys; ...`, `'plugin' must be a table, like [plugin.<name>]`, `[plugin] holds one table per plugin, like [plugin.x]`, `expected ] after table name`, `only integers are supported`, `leading zeros are not allowed`, `'_' must be between digits`, `integer out of range`, `inline tables are not supported`, `arrays nest too deeply (more than 64 levels)`, `multi-line strings are not supported`, `control characters in strings must be escaped`, `control characters are not allowed in comments`, `unterminated string`, `unknown escape \q`, `expected end of line`, `'text_width' must be between 0 and 100000`, ... See [configuration.md](configuration.md#toml-subset). |
+| `warning: site.toml:<N>: unknown key '<k>'` | Also `unknown key '<k>' in [markdown]` and `unknown table [<t>]` (for a header or a dotted key's first part). Keys inside an unknown table are ignored without further warnings. `[plugin.<name>]` tables are accepted without warnings here; each plugin checks its own keys (see below). |
 
 ### Dist (exit 1, nothing written)
 
@@ -303,4 +387,5 @@ Other filesystem failures (permissions, for example) come with the C++ library's
 | message | |
 | --- | --- |
 | `note: skipping <dir>/ (a nested git checkout; set nested_repos = true to build it)` | `<dir>` has a `.git` file or directory. Hidden by `--quiet`; not a warning. |
+| `note: skipping <path> (a symlink; set follow_symlinks = true to copy what it points to)` | `<path>` is a symlink to a file. Hidden by `--quiet`; not a warning. |
 | `built <N> pages, copied <M> files in <T> ms (<K> warnings)` | The summary. The part in parentheses only appears when there were warnings. Hidden by `--quiet`. |

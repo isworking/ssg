@@ -31,3 +31,11 @@
 <p style="background:url(javascript:alert(1))">styled</p>
 
 text with <b onclick="x()">bold</b> and <i>it</i>.
+
+<custom-widget data-x="1">w</custom-widget> <form action="/x"><input name=q></form> <math><mi>x</mi></math>
+
+<div class="ok" id="d" data-k="v" aria-label="l" style="color:red" align="center" onclick="x()">kept</div>
+
+<a href="https://ok.example/" target="_blank" ping="http://evil/" download>link</a>
+
+<img src="a.png" alt="a" width="3" formaction="x" srcset="b.png 2x">

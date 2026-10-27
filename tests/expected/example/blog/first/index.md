@@ -1,0 +1,10 @@
+# First post
+
+
+Written by Rajdeep on 2026-05-01. About 1 min read.
+
+Tags:
+
+- [hello](/tags/hello/)
+- [ssg](/tags/ssg/)
+

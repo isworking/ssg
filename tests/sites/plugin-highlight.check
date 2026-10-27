@@ -1,0 +1,50 @@
+# ssg-plugin-highlight (post_page)
+HL=$(dirname "$SSG")/ssg-plugin-highlight
+if [ ! -x "$HL" ]; then echo "skip: no $HL (built with -DSSG_PLUGINS=OFF?)"; else
+minimal_site
+printf '[plugin.highlight]\npath = "%s"\n' "$HL" >>"$SITE/site.toml"
+cat >"$SITE/index.md" <<'MD'
+# Code
+
+```cpp
+int main() { return 42; } // done <ok> & "q"
+/* block */ const char* s = "a\"b";
+```
+
+```python
+def f(): # note
+    return 'x' if True else None
+```
+
+```json
+{"a": [1, true, null]}
+```
+
+```text
+int stays plain
+```
+
+Inline `int x` is untouched.
+MD
+build --quiet
+status 0
+contains index.html '<span class="hl-keyword">int</span> main() { <span class="hl-keyword">return</span> <span class="hl-number">42</span>; } <span class="hl-comment">// done &lt;ok&gt; &amp; &quot;q&quot;</span>'
+contains index.html '<span class="hl-comment">/* block */</span> <span class="hl-keyword">const</span> <span class="hl-keyword">char</span>* s = <span class="hl-string">&quot;a\&quot;b&quot;</span>;'
+contains index.html '<span class="hl-keyword">def</span> f(): <span class="hl-comment"># note</span>'
+contains index.html "<span class=\"hl-keyword\">return</span> <span class=\"hl-string\">'x'</span>"
+contains index.html '<span class="hl-keyword">True</span> <span class="hl-keyword">else</span> <span class="hl-keyword">None</span>'
+contains index.html '{<span class="hl-string">&quot;a&quot;</span>: [<span class="hl-number">1</span>, <span class="hl-keyword">true</span>, <span class="hl-keyword">null</span>]}'
+contains index.html '<code class="language-text">int stays plain'
+contains index.html '<code>int x</code>'
+# the published markdown and text are not highlighted
+omits index.md 'hl-'
+omits index.txt 'hl-'
+# prefix is configurable
+printf '[plugin.highlight]\npath = "%s"\nprefix = "tok-"\n' "$HL" >"$TMP/hl.toml"
+sed -i.bak '/^\[plugin/,$d' "$SITE/site.toml"
+cat "$TMP/hl.toml" >>"$SITE/site.toml"
+build --quiet
+status 0
+contains index.html '<span class="tok-keyword">int</span> main()'
+omits index.html 'hl-'
+fi

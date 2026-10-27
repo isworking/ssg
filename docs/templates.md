@@ -122,6 +122,8 @@ and in raw HTML. To show template syntax, escape it.
 | `{{extend "name"}}` | wrap this page in `templates/name.md` (first thing in the body only) |
 | `{{content}}` | in a template: the page (or inner template) being wrapped |
 | `{{include "name"}}` | paste `templates/name.md` |
+| `{{asset "path"}}` | the URL of a content-hashed copy of an asset, e.g. `/style.1a2b3c4d5e.css` |
+| `{{inline "path.css"}}` | the contents of a stylesheet, for a `<style>` element |
 | `{{if key}}` `{{if not key}}` `{{else}}` `{{end}}` | conditionals |
 | `\{{` | a literal `{{` |
 
@@ -196,6 +198,35 @@ skeleton). See [per-section templates](#per-section-templates).
 
 - `.md` is appended unless the name ends in `.md`: `{{include "nav.html"}}` reads
   `nav.html.md`.
+
+### `{{asset}}` and `{{inline}}`
+
+```html
+<link rel="stylesheet" href="{{asset "style.css"}}">
+<style>{{inline "critical.css"}}</style>
+```
+
+Both work in the skeleton, templates and frontmatter values, and take a path relative to the
+content dir (not the templates dir; paths may contain `/`). The file must be a published asset:
+a missing file, a path with `..`, or a file that is ignored, hidden or a page is an error
+naming the page.
+
+- `{{asset "style.css"}}` also writes the file as `style.<hash>.css` (`<hash>` is the first 10 hex
+  digits of the SHA-256 of the published bytes, so builds are reproducible) and expands to
+  `/style.<hash>.css`. The plain `style.css` is still published. Any asset can be fingerprinted;
+  `LICENSE` becomes `LICENSE.<hash>`. Only files named this way are fingerprinted, and `url(...)`
+  inside a stylesheet is left alone.
+- `{{inline "x.css"}}` expands to the stylesheet's text with trailing whitespace removed. It
+  fails the build if the file contains `</style` (any case), and warns when it is larger than
+  `css.inline_limit` bytes (default 16384, `0` turns the warning off). A `{{` inside the file
+  stays literal. Inline in the skeleton: in a Markdown template the surrounding HTML block is
+  subject to `html` and `scripts` handling.
+- With `[css] minify = true` both use the minified file, so the hash and the inlined text match
+  what is published.
+- The manifest records each fingerprint and, for inlined files, the CSP source to put in
+  `style-src` (see [manifest.json](configuration.md#manifestjson)).
+
+Like `{{include}}`, both expand in the final pass only.
 
 ### Conditionals
 
@@ -326,8 +357,33 @@ never read.
 | `parent_url`, `parent_title` | the index page above |
 | `prev_url`, `prev_title`, `next_url`, `next_title` | the neighbouring siblings |
 | `toc` | a nested list of links to the page's `##`..`######` headings |
+| `absolute_url`, `canonical_url` | `base_url` + `url`, e.g. `https://example.com/blog/`. Only defined when `base_url` is set, so `{{if canonical_url}}` works. Set `canonical_url:` on a page to point it elsewhere. |
+| `feed_url` | `base_url/feed.xml`; defined only when a `[feed]` is being written |
+| `page_number`, `page_count`, `prev_page_url`, `next_page_url` | on the pages of a section using `paginate`; see [Pagination](configuration.md#pagination) |
+| `taxonomy`, `taxonomy_title`, `term`, `term_slug`, `term_url`, `term_count`, `terms`, `pages`, `<name>_links` | taxonomy pages and the pages they group; see [taxonomies](configuration.md#taxonomyname) |
+| `data.<file>.<key>` | values from `data/*.toml` and `data/*.json`; see [Data files](configuration.md#data-files) |
+| `og_title` | the page's `title`, or the link title navigation would use (see below) when it has none |
+| `og_description` | the page's `description`, or empty |
 
 All are strings, and all can be overridden by the page or a template.
+
+### Canonical and Open Graph keys
+
+These exist so a skeleton can write its `<head>` without repeating itself:
+
+```html
+<head>
+  <title></title>
+  {{if canonical_url}}<link rel="canonical" href="{{canonical_url}}">{{end}}
+  <meta property="og:title" content="{{og_title}}">
+  {{if og_description}}<meta property="og:description" content="{{og_description}}">{{end}}
+  {{if absolute_url}}<meta property="og:url" content="{{absolute_url}}">{{end}}
+</head>
+```
+
+Values placed in the skeleton are attribute-escaped. All four are ordinary defaults, so a page's
+own `og_title:` or `canonical_url:` wins. `og_title` and `og_description` are empty in the first
+pass, like the navigation keys.
 
 ### `build_date`
 
@@ -346,8 +402,11 @@ Anything else (not an integer, negative, past 9999-12-31) is ignored with
 Counted on the page's plain text (the `.txt` rendering, wrapped at `text_width`) from pass 1: the page after
 its templates, with the navigation builtins empty. Template text such as a footer counts; the
 skeleton doesn't. A word is a whitespace-separated run with at least one ASCII letter or digit or
-any non-ASCII character, so `--` and `*` don't count, but `—` does. `reading_time` is
-`ceil(words / 200)`, minimum 1: 401 words is `3`.
+any non-ASCII character, so `--` and `*` don't count, but `—` does. Han ideographs, kana and
+the CJK extension blocks are written without spaces, so each such character counts as one word
+of its own (Hangul is spelled with spaces and is counted like any other text). `reading_time`
+assumes 200 words or 500 CJK characters a minute: `ceil((words + cjk * 0.4) / 200)`, minimum 1,
+where `words` excludes the CJK characters. 401 Latin words is `3`; 501 Han characters is `2`.
 
 ### Parents, children, siblings
 

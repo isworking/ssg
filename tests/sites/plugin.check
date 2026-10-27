@@ -1,0 +1,204 @@
+# plugin protocol 1, against the mock plugin (tests/plugin/mock_plugin.cpp): every hook, the
+# common keys, --meta checks, and each way a plugin can fail.
+BIN=$(dirname "$SSG")
+MOCK=$BIN/ssg-plugin-mock
+[ -x "$MOCK" ] || bad "no $MOCK (build the ssg-plugin-mock target)"
+
+# fresh: a minimal site with one page and one asset, and a [plugin.mock] table made of $1.
+fresh() {
+  rm -rf "$SITE" "$DIST"
+  mkdir -p "$SITE"
+  minimal_site
+  printf -- '---\ntitle: P\n---\n# Page\nTRANSFORM_ME\n\n::: shout one two\nloud *words*\n:::\n' >"$SITE/index.md"
+  printf 'pic' >"$SITE/pic.bin"
+  printf '[plugin.mock]\npath = "%s"\n%s\n' "$MOCK" "${1:-}" >>"$SITE/site.toml"
+  rm -f "$TMP/log"
+}
+src_has() { grep -qF -- "$2" "$SITE/$1" && ok || bad "$1 lacks: $2"; }
+
+# --- every hook
+fresh "log = \"$TMP/log\"
+warn = \"hello from init\""
+build
+status 0
+err_has "ssg: plugin mock 0.3.1 ($MOCK)"
+err_has 'warning: plugin mock: hello from init'
+contains index.md 'transformed by mock'
+omits index.md 'TRANSFORM_ME'
+contains index.md 'args=[one two] page=index.md'
+contains index.md 'LOUD *WORDS*'
+omits index.md '::: shout'
+contains index.html '<em>WORDS</em>'
+contains index.html '<!-- mock / --></body>'
+contains pic.bin-mock 'mock:pic'
+contains pic.bin 'pic'
+contains mock-build.txt 'pages=1'
+src_has manifest.json '{"path": "pic.bin-mock", "output": "pic.bin-mock", "size": 8}'
+src_has manifest.json '"plugins": [{"name": "mock", "version": "0.3.1", "protocol": 1}]'
+for h in init transform_source 'container:shout' post_page asset post_build; do
+  grep -qxF "$h 1" "$TMP/log" && ok || bad "hook $h was not called with SSG_PROTOCOL=1"
+done
+
+# --quiet drops the announcement, not the plugin's warnings
+build --quiet
+err_lacks 'ssg: plugin mock 0.3.1'
+err_has 'plugin mock: hello from init'
+
+# --no-plugins and enabled = false start nothing
+build --no-plugins --quiet
+status 0
+contains index.md 'TRANSFORM_ME'
+lacks mock-build.txt
+src_has manifest.json '"plugins": []'
+fresh 'enabled = false'
+build --quiet
+status 0
+lacks mock-build.txt
+
+# containers inside code fences are left alone; unknown ones too; nesting closes the innermost
+fresh
+printf '# C\n\n```\n::: shout\nnot a container\n:::\n```\n\n::: other\nkept\n:::\n\n:::: shout\nouter\n::: warning\ninner\n:::\nafter\n::::\n\ntail\n' >"$SITE/index.md"
+build --quiet
+status 0
+contains index.md '::: shout
+not a container'
+contains index.md '::: other'
+contains index.md 'OUTER
+::: WARNING
+INNER
+:::
+AFTER'
+contains index.md 'tail'
+
+# without a path, the plugin comes from PATH
+fresh
+sed -i.bak '/^path = /d' "$SITE/site.toml"
+OLDPATH=$PATH
+PATH="$BIN:$OLDPATH"
+build --quiet
+rc1=$rc
+PATH=$OLDPATH
+[ "$rc1" -eq 0 ] && ok || bad "PATH lookup failed: $(cat "$ERR")"
+contains mock-build.txt 'pages=1'
+build --quiet
+status 1
+err_has "plugin 'mock': ssg-plugin-mock is not on PATH"
+# ...but never from a directory inside the site
+mkdir -p "$SITE/bin"
+cp "$MOCK" "$SITE/bin/ssg-plugin-mock"
+PATH="$SITE/bin:$OLDPATH"
+build --quiet
+rc1=$rc
+PATH=$OLDPATH
+[ "$rc1" -eq 1 ] && ok || bad "found a plugin inside the content dir"
+# a missing optional plugin is a warning
+fresh 'required = false'
+sed -i.bak "s|^path = .*|path = \"$SITE/nope\"|" "$SITE/site.toml"
+build --quiet
+status 0
+err_has "warning: plugin 'mock': $SITE/nope is not an executable file (required = false: plugin skipped)"
+src_has manifest.json '"plugins": []'
+# a relative path is relative to the site
+fresh
+cp "$MOCK" "$SITE/my-plugin"
+sed -i.bak 's|^path = .*|path = "my-plugin"|' "$SITE/site.toml"
+build --quiet
+status 0
+contains mock-build.txt 'pages=1'
+
+# --- failures: each names the plugin and hook; required = false downgrades them
+for how in exit badjson hang error wrongid nonstring; do
+  for hook in post_page transform_source; do
+    fresh "fail_hook = \"$hook\"
+fail = \"$how\"
+timeout = 1"
+    build --quiet
+    status 1
+    err_has "plugin 'mock', hook '$hook'"
+    case $how in
+      hang) err_has 'timed out after 1s' ;;
+      exit) err_has 'exited before answering; it exited with status 3' ;;
+      badjson) err_has 'answered with invalid JSON' ;;
+      error) err_has 'failed: deliberate failure' ;;
+      wrongid) err_has 'wrong id' ;;
+      nonstring) err_has 'the result must be a string' ;;
+    esac
+    fresh "fail_hook = \"$hook\"
+fail = \"$how\"
+timeout = 1
+required = false"
+    build --quiet
+    status 0
+    err_has "plugin 'mock', hook '$hook'"
+    err_has 'plugin skipped'
+    has index.html
+    omits index.html '<!-- mock'
+  done
+done
+# a plugin that dies in init, or on a container or asset or post_build
+fresh 'fail_hook = "init"
+fail = "exit"'
+build --quiet
+status 1
+err_has "plugin 'mock', hook 'init'"
+fresh 'fail_hook = "container:shout"
+fail = "error"'
+build --quiet
+status 1
+err_has "hook 'container:shout'"
+fresh 'fail_hook = "post_build"
+fail = "exit"'
+build --quiet
+status 1
+err_has "hook 'post_build'"
+fresh 'fail_hook = "asset"
+fail = "escape"'
+build --quiet
+status 1
+err_has "plugin 'mock', hook 'asset': '../evil' is not a path inside dist"
+lacks pic.bin-mock
+
+# --- --meta: a newer protocol is refused, unknown and mistyped config is caught
+fresh
+MOCK_META_PROTOCOL=2
+export MOCK_META_PROTOCOL
+build --quiet
+rc1=$rc
+unset MOCK_META_PROTOCOL
+[ "$rc1" -eq 1 ] && ok || bad "a protocol 2 plugin was accepted"
+err_has 'needs plugin protocol 2, but this ssg speaks 1'
+fresh 'surprise = 1'
+build --quiet
+status 0
+err_has "warning: [plugin.mock] has the key 'surprise', which mock does not declare"
+fresh 'count = "three"'
+build --quiet
+status 1
+err_has "[plugin.mock] 'count' must be int, not string"
+fresh 'timeout = 0'
+build --quiet
+status 1
+err_has 'timeout must be a whole number of seconds'
+fresh 'required = "yes"'
+build --quiet
+status 1
+err_has 'required must be true or false'
+
+# --- plugins list / meta / doctor see the real plugin
+fresh
+(cd "$SITE" && "$SSG" plugins list >"$TMP/out.txt" 2>"$ERR"); rc=$?
+status 0
+grep -qxF "mock  0.3.1  $MOCK" "$TMP/out.txt" && ok || bad "plugins list: $(cat "$TMP/out.txt")"
+(cd "$SITE" && "$SSG" --json plugins list >"$TMP/out.txt" 2>"$ERR"); rc=$?
+grep -qF '"resolved":true' "$TMP/out.txt" && grep -qF '"version":"0.3.1"' "$TMP/out.txt" \
+  && grep -qF '"hooks":["init","transform_source","post_page","asset","post_build","container:shout"]' "$TMP/out.txt" \
+  && ok || bad "plugins list --json: $(cat "$TMP/out.txt")"
+(cd "$SITE" && "$SSG" plugins meta mock >"$TMP/out.txt" 2>"$ERR"); rc=$?
+status 0
+grep -qF '"name":"mock"' "$TMP/out.txt" && grep -qF '"protocol":1' "$TMP/out.txt" && ok || bad "plugins meta: $(cat "$TMP/out.txt")"
+"$SSG" doctor "$SITE" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 0
+grep -qF "ok    plugin mock: 0.3.1 at $MOCK" "$TMP/out.txt" && ok || bad "doctor: $(cat "$TMP/out.txt")"
+fresh 'surprise = 1'
+"$SSG" doctor "$SITE" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+grep -qF "warn  plugin mock: [plugin.mock] has the key 'surprise'" "$TMP/out.txt" && ok || bad "doctor: $(cat "$TMP/out.txt")"

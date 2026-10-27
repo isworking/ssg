@@ -1,0 +1,68 @@
+# redirects.txt -> _redirects, manifest redirects[] and optional meta-refresh pages
+minimal_site
+printf 'x\n' >"$SITE/index.md"
+printf 'x\n' >"$SITE/new.md"
+cat >"$SITE/redirects.txt" <<'R'
+# moved pages
+/old        /new/            # default status
+/blog/*     /posts/:splat    302
+/gone/      https://example.com/elsewhere?a=1&b=2  308
+
+/legacy.html /new/ 301
+R
+build --quiet
+status 0
+lacks redirects.txt
+same _redirects '/old /new/ 301
+/blog/* /posts/:splat 302
+/gone/ https://example.com/elsewhere?a=1&b=2 308
+/legacy.html /new/ 301
+'
+lacks old/index.html
+printf 'base_url = "https://example.com"\n' >>"$SITE/site.toml"
+build --quiet
+src_has() { grep -qF -- "$2" "$SITE/$1" && ok || bad "$1 lacks: $2"; }
+src_has manifest.json '{"from": "/old", "to": "/new/", "status": 301}'
+src_has manifest.json '{"from": "/blog/*", "to": "/posts/:splat", "status": 302}'
+
+# meta-refresh pages, for hosts without redirects; wildcards get none
+printf 'redirect_pages = true\n' >>"$SITE/site.toml"
+build --quiet
+status 0
+contains old/index.html '<meta http-equiv="refresh" content="0; url=/new/">'
+contains old/index.html '<link rel="canonical" href="https://example.com/new/">'
+contains old/index.html '<meta name="robots" content="noindex">'
+contains gone/index.html 'url=https://example.com/elsewhere?a=1&amp;b=2'
+contains legacy.html '<a href="/new/">/new/</a>'
+lacks blog
+lacks '*'
+
+# problems are reported per line and skipped; the rest still apply
+cat >"$SITE/redirects.txt" <<'R'
+/a /b
+nofrom /b
+/c
+/d /e 404
+/f ftp://x
+/a /z
+/ok /fine
+R
+build
+status 0
+err_has 'redirects.txt: line 2: '"'"'nofrom'"'"' must start with /'
+err_has 'redirects.txt: line 3: want'
+err_has 'redirects.txt: line 4: status '"'"'404'"'"' must be'
+err_has 'redirects.txt: line 5: '"'"'ftp://x'"'"' must be a path'
+err_has 'redirects.txt: line 6: '"'"'/a'"'"' is already redirected'
+same _redirects '/a /b 301
+/ok /fine 301
+'
+
+# a hand-written _redirects or page wins
+printf 'custom\n' >"$SITE/_redirects"
+printf 'x\n' >"$SITE/a.md"
+build
+err_has '_redirects exists in the content dir'
+err_has 'a/index.html already exists; no redirect page written'
+same _redirects 'custom
+'

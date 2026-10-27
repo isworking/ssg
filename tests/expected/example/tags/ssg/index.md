@@ -1,0 +1,8 @@
+# Tags: ssg
+
+
+2 posts tagged ssg:
+
+- [Second post](/blog/second/)
+- [First post](/blog/first/)
+

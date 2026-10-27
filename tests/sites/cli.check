@@ -1,6 +1,8 @@
 "$SSG" --version >"$ERR" 2>&1; rc=$?
 status 0
-err_has 'ssg 0.2.0'
+# "ssg 1.0.0-dev (abc1234)"; the suffix and commit depend on how it was configured. The commit
+# is a hash (maybe -dirty), never a tag name.
+grep -Eq '^ssg [0-9]+\.[0-9]+\.[0-9]+[^ ]*( \([0-9a-f]{4,}(-dirty)?\))?$' "$ERR" && ok || bad "--version: $(cat "$ERR")"
 "$SSG" --bogus x >"$ERR" 2>&1; rc=$?
 status 2
 err_has 'usage:'

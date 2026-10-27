@@ -1,0 +1,99 @@
+# Global flags, --json and exit codes. The fixture has broken links, so --check-links warns.
+# `ssg <dir>` is an alias for `ssg build <dir>`.
+build --quiet
+status 0
+has index.html
+rm -rf "$DIST"
+build build --quiet
+status 0
+has index.html
+# --fail-on-warning: 3 with warnings (here index.html and index.md collide); the build completes
+build build --quiet --fail-on-warning
+status 3
+has index.html
+# flags may come before the dir in the legacy form, and as --flag=value
+"$SSG" --quiet "$SITE" 2>"$ERR"; rc=$?
+status 0
+"$SSG" build --quiet --output="$TMP/out-eq" "$SITE" 2>"$ERR"; rc=$?
+status 0
+[ -f "$TMP/out-eq/index.html" ] && ok || bad "--output=dir ignored"
+# --output
+rm -rf "$TMP/out"
+build build --quiet --output "$TMP/out"
+status 0
+[ -f "$TMP/out/index.html" ] && ok || bad "--output ignored"
+# --base-url turns on the sitemap
+rm -rf "$DIST"
+build build --quiet --base-url https://x.test/
+status 0
+contains sitemap.xml '<loc>https://x.test/</loc>'
+# --config: another file in the same site; "site.toml" itself is not published when it is the one
+cp "$SITE/site.toml" "$SITE/alt.toml"
+printf 'base_url = "https://alt.test"\n' >>"$SITE/alt.toml"
+rm -rf "$DIST"
+build build --quiet --config "$SITE/alt.toml"
+status 0
+contains sitemap.xml 'https://alt.test/'
+lacks alt.toml
+build build --quiet --config "$SITE/nope.toml"
+status 1
+err_has 'missing config file'
+# --verbose lists pages and files
+build build --verbose
+status 0
+err_has 'built / from index.md'
+err_has 'copied img.png'
+# --color: always colours warnings, never and NO_COLOR do not
+build build --quiet --check-links --color always
+printf '\033[33mwarning:\033[0m' >"$TMP/esc"
+err_has "$(cat "$TMP/esc")"
+build build --quiet --check-links --color never
+err_lacks "$(printf '\033')"
+NO_COLOR=1 "$SSG" build --quiet --check-links "$SITE" 2>"$ERR"
+err_lacks "$(printf '\033')"
+build build --color purple
+status 2
+# usage errors are 2
+build build --bogus
+status 2
+build build --port 80
+status 2
+"$SSG" build "$SITE" --output >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 2
+err_has '--output needs a value'
+"$SSG" build a b >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 2
+err_has 'one content dir only'
+# build errors are 1
+"$SSG" build "$SITE/nope" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 1
+# --json: stdout is one JSON object, the human messages stay on stderr
+build build --json --check-links
+status 0
+J=$TMP/$NAME.out
+grep -qF '"schema":1,"ok":true,"command":"build"' "$J" && ok || bad "json header: $(cat "$J")"
+grep -qF '{"url":"/","source":"index.md","output":"index.md"}' "$J" && ok || bad "json pages"
+grep -qF '"files":["a.md"' "$J" && bad "md in files" || ok
+grep -qF '"img.png"' "$J" && ok || bad "json files"
+grep -qF '{"file":"index.md","message":"broken link missing/"}' "$J" && ok || bad "json warnings"
+grep -qF '"timings_ms":{"total":' "$J" && ok || bad "json timings"
+[ "$(wc -l <"$J")" -eq 1 ] && ok || bad "json is not one line"
+err_has 'broken link missing/'
+build build --json --bogus
+status 2
+build build --json --fail-on-warning --check-links
+status 3
+"$SSG" build --json "$SITE/nope" >"$J" 2>"$ERR"; rc=$?
+status 1
+grep -qF '{"schema":1,"ok":false,"error":"missing site.toml' "$J" && ok || bad "json error: $(cat "$J")"
+# --output after a normal build: the configured dist is not content
+rm -rf "$DIST" "$TMP/out-after"
+build build --quiet
+build build --output "$TMP/out-after" --fail-on-warning --quiet
+[ ! -e "$TMP/out-after/dist" ] && ok || bad "earlier dist was republished under --output"
+# flags before the command name
+"$SSG" --quiet build "$SITE" 2>"$ERR"; rc=$?
+status 0
+"$SSG" --json list "$SITE" >"$TMP/lead.json" 2>"$ERR"; rc=$?
+status 0
+grep -q '"command":"list"' "$TMP/lead.json" && ok || bad "leading --json before list ignored"

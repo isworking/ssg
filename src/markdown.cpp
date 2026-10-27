@@ -3392,11 +3392,59 @@ void build(Parsed& P, std::string_view md) {
   }
 }
 
-// ---- raw HTML sanitizing (scripts = false) ----
+// ---- raw HTML sanitizing, allow-list (scripts = false) ----
 
-const char* const kDenyTags[] = {"applet", "base", "embed", "frame", "frameset", "iframe", "link",
-                                 "meta", "noembed", "noframes", "noscript", "object", "plaintext",
-                                 "portal", "script", "style", "template", "textarea", "title", "xmp"};
+// The allow-list: only these tags pass, and only with the attributes below. Anything else (custom
+// elements, svg, math, form controls, and the dangerous ones like script, iframe, style, base,
+// meta, link) is escaped and shown as text. [markdown] allow_tags / allow_attrs extend it.
+const char* const kAllowTags[] = {
+    "a", "abbr", "address", "article", "aside", "audio", "b", "bdi", "bdo", "blockquote", "br",
+    "caption", "cite", "code", "col", "colgroup", "data", "dd", "del", "details", "dfn", "div",
+    "dl", "dt", "em", "figcaption", "figure", "footer", "h1", "h2", "h3", "h4", "h5", "h6",
+    "header", "hgroup", "hr", "i", "img", "ins", "kbd", "li", "main", "mark", "nav", "ol", "p",
+    "picture", "pre", "q", "rp", "rt", "ruby", "s", "samp", "section", "small", "source", "span",
+    "strong", "sub", "summary", "sup", "table", "tbody", "td", "tfoot", "th", "thead", "time",
+    "tr", "track", "u", "ul", "var", "video", "wbr"};
+
+// Attributes allowed on every allowed tag (aria-* and data-* are matched by prefix).
+const char* const kGlobalAttrs[] = {"class", "dir", "hidden", "id", "lang", "role", "title",
+                                    "translate"};
+
+struct TagAttrs {
+  const char* tag;
+  const char* attrs;  // space-separated
+};
+const TagAttrs kTagAttrs[] = {
+    {"a", "href hreflang rel target type"},
+    {"audio", "controls loop muted preload src"},
+    {"blockquote", "cite"},
+    {"col", "span"},
+    {"colgroup", "span"},
+    {"data", "value"},
+    {"del", "cite datetime"},
+    {"details", "open"},
+    {"img", "alt decoding height loading sizes src srcset width"},
+    {"ins", "cite datetime"},
+    {"li", "value"},
+    {"ol", "reversed start type"},
+    {"q", "cite"},
+    {"source", "media sizes src srcset type"},
+    {"td", "abbr align colspan headers rowspan"},
+    {"th", "abbr align colspan headers rowspan scope"},
+    {"time", "datetime"},
+    {"track", "default kind label src srclang"},
+    {"video", "controls height loop muted playsinline poster preload src width"},
+};
+
+bool tag_allowed(const std::string& lname, const MarkdownOptions& opt) {
+  for (const char* t : kAllowTags) {
+    if (lname == t) return true;
+  }
+  for (const auto& t : opt.allow_tags) {
+    if (lname == t) return true;
+  }
+  return false;
+}
 
 // Entity decoding with HTML attribute leniency (numeric references may omit ';').
 std::string decode_attr(std::string_view s) {
@@ -3434,13 +3482,37 @@ std::string decode_attr(std::string_view s) {
   return out;
 }
 
-bool attr_allowed(std::string_view name, std::string_view raw_value) {
+bool attr_name_allowed(const std::string& tag, const std::string& n, const MarkdownOptions& opt) {
+  for (const auto& a : opt.allow_attrs) {
+    if (n == a) return true;
+  }
+  for (const char* a : kGlobalAttrs) {
+    if (n == a) return true;
+  }
+  if (n.size() > 5 && (n.compare(0, 5, "aria-") == 0 || n.compare(0, 5, "data-") == 0)) return true;
+  for (const auto& ta : kTagAttrs) {
+    if (tag != ta.tag) continue;
+    const std::string_view list = ta.attrs;
+    size_t i = 0;
+    while (i < list.size()) {
+      size_t e = list.find(' ', i);
+      if (e == npos) e = list.size();
+      if (list.substr(i, e - i) == n) return true;
+      i = e + 1;
+    }
+  }
+  return false;
+}
+
+bool attr_allowed(const std::string& tag, std::string_view name, std::string_view raw_value,
+                  const MarkdownOptions& opt) {
   const std::string n = to_lower(name);
   if (n.size() >= 2 && n[0] == 'o' && n[1] == 'n') return false;
   if (n == "srcdoc") return false;
   for (char c : n) {
     if (!(is_alnum(c) || c == '-' || c == '_' || c == ':' || c == '.')) return false;
   }
+  if (!attr_name_allowed(tag, n, opt)) return false;
   std::string v;
   for (char c : decode_attr(raw_value)) {
     if (static_cast<unsigned char>(c) > 0x20 && c != 0x7F) v += lower(c);
@@ -3453,8 +3525,8 @@ bool attr_allowed(std::string_view name, std::string_view raw_value) {
   return !dangerous_url(v);
 }
 
-// Re-tokenizes raw HTML the way a browser would and rebuilds only harmless tags.
-std::string sanitize_html(std::string_view s) {
+// Re-tokenizes raw HTML the way a browser would and rebuilds only allow-listed tags and attributes.
+std::string sanitize_html(std::string_view s, const MarkdownOptions& opt) {
   std::string out;
   size_t i = 0;
   const size_t n = s.size();
@@ -3552,11 +3624,7 @@ std::string sanitize_html(std::string_view s) {
       break;
     }
     const std::string lname = to_lower(name);
-    bool deny = false;
-    for (const char* t : kDenyTags) {
-      if (lname == t) deny = true;
-    }
-    if (deny) {
+    if (!tag_allowed(lname, opt)) {
       escape_html(out, s.substr(i, j - i));
       i = j;
       continue;
@@ -3566,7 +3634,7 @@ std::string sanitize_html(std::string_view s) {
     out.append(name);
     if (!closing) {
       for (const auto& a : attrs) {
-        if (!attr_allowed(a.name, a.value)) continue;
+        if (!attr_allowed(lname, a.name, a.value, opt)) continue;
         out += ' ';
         out.append(a.name);
         if (a.has_value) {
@@ -3602,7 +3670,7 @@ struct HtmlRenderer {
 
   void raw(std::string_view html) {
     if (!opt.raw_html) escape_html(out, html);
-    else if (!opt.scripts) out += sanitize_html(html);
+    else if (!opt.scripts) out += sanitize_html(html, opt);
     else out.append(html);
   }
 
@@ -4321,10 +4389,21 @@ std::string join_lines(const Lines& ls) {
 
 }  // namespace
 
-std::string markdown_to_html(std::string_view md, const MarkdownOptions& opt) {
-  Parsed P(opt);
-  build(P, md);
-  HtmlRenderer r(opt);
+struct MarkdownDoc::Impl {
+  Impl(std::string_view md, const MarkdownOptions& o) : opt(o), P(opt) { build(P, md); }
+  MarkdownOptions opt;  // owned here: Doc and the renderers hold references to it
+  Parsed P;
+};
+
+MarkdownDoc::MarkdownDoc(std::string_view md, const MarkdownOptions& opt)
+    : impl_(new Impl(md, opt)) {}
+MarkdownDoc::~MarkdownDoc() = default;
+MarkdownDoc::MarkdownDoc(MarkdownDoc&&) noexcept = default;
+MarkdownDoc& MarkdownDoc::operator=(MarkdownDoc&&) noexcept = default;
+
+std::string MarkdownDoc::html() const {
+  Parsed& P = impl_->P;
+  HtmlRenderer r(impl_->opt);
   r.render(P.d.root);
   if (!P.d.fn_order.empty()) {
     r.cr();
@@ -4336,11 +4415,10 @@ std::string markdown_to_html(std::string_view md, const MarkdownOptions& opt) {
   return std::move(r.out);
 }
 
-std::string markdown_to_text(std::string_view md, const MarkdownOptions& opt) {
-  Parsed P(opt);
-  build(P, md);
-  TextRenderer r(opt);
-  const int w = opt.text_width > 0 ? opt.text_width : 0;
+std::string MarkdownDoc::text() const {
+  Parsed& P = impl_->P;
+  TextRenderer r(impl_->opt);
+  const int w = impl_->opt.text_width > 0 ? impl_->opt.text_width : 0;
   Lines out = r.children(P.d.root, w, false);
   if (!P.d.fn_order.empty()) {
     out.emplace_back();
@@ -4356,11 +4434,9 @@ std::string markdown_to_text(std::string_view md, const MarkdownOptions& opt) {
   return join_lines(out);
 }
 
-std::vector<Heading> markdown_headings(std::string_view md, const MarkdownOptions& opt) {
-  Parsed P(opt);
-  build(P, md);
+std::vector<Heading> MarkdownDoc::headings() const {
   std::vector<Heading> out;
-  for (Node* h : P.headings) {
+  for (Node* h : impl_->P.headings) {
     Heading x;
     x.level = h->level;
     x.text = std::string(trim_ws(plain_text(h)));
@@ -4368,4 +4444,14 @@ std::vector<Heading> markdown_headings(std::string_view md, const MarkdownOption
     out.push_back(std::move(x));
   }
   return out;
+}
+
+std::string markdown_to_html(std::string_view md, const MarkdownOptions& opt) {
+  return MarkdownDoc(md, opt).html();
+}
+std::string markdown_to_text(std::string_view md, const MarkdownOptions& opt) {
+  return MarkdownDoc(md, opt).text();
+}
+std::vector<Heading> markdown_headings(std::string_view md, const MarkdownOptions& opt) {
+  return MarkdownDoc(md, opt).headings();
 }

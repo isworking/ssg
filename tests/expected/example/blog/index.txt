@@ -1,0 +1,9 @@
+Blog
+====
+
+- First post </blog/first/>
+- Second post </blog/second/>
+
+Older posts </blog/page/2/>
+
+Browse by tag </tags/>. Subscribe with the Atom feed </feed.xml>.

@@ -1,0 +1,71 @@
+# paginate: "N" on an index page splits {{children}} over /dir/, /dir/page/2/, ...
+minimal_site
+mkdir -p "$SITE/posts"
+for n in 1 2 3 4 5; do
+  printf -- '---\ntitle: "P%s"\norder: %s\n---\nx\n' "$n" "$n" >"$SITE/posts/p$n.md"
+done
+cat >"$SITE/posts/index.md" <<'M'
+---
+title: "Posts{{if prev_page_url}} (page {{page_number}}){{end}}"
+paginate: "2"
+---
+page {{page_number}} of {{page_count}}
+prev=[{{prev_page_url}}] next=[{{next_page_url}}]
+
+{{children}}
+M
+printf 'x\n' >"$SITE/index.md"
+build --quiet
+status 0
+same posts/index.md 'page 1 of 3
+prev=[] next=[/posts/page/2/]
+
+- [P1](/posts/p1/)
+- [P2](/posts/p2/)
+'
+same posts/page/2/index.md 'page 2 of 3
+prev=[/posts/] next=[/posts/page/3/]
+
+- [P3](/posts/p3/)
+- [P4](/posts/p4/)
+'
+same posts/page/3/index.md 'page 3 of 3
+prev=[/posts/page/2/] next=[]
+
+- [P5](/posts/p5/)
+'
+lacks posts/page/4/index.md
+contains posts/page/2/index.html '<title>Posts (page 2)</title>'
+contains posts/index.html '<title>Posts</title>'
+# the posts themselves still see all siblings, and none of them list the extra pages
+mkdir -p "$SITE/tmp"
+printf 'p={{parent_url}} n={{next_title}}\n' >"$SITE/posts/p5.md"
+build --quiet
+contains posts/p5/index.md 'p=/posts/'
+printf -- '---\ntitle: "P2"\norder: 2\n---\nprev={{prev_title}} next={{next_title}}\n' >"$SITE/posts/p2.md"
+build --quiet
+contains posts/p2/index.md 'prev=P1 next=P3'
+
+# a section that fits on one page still gets the keys
+printf -- '---\npaginate: "10"\n---\n{{page_number}}/{{page_count}} [{{next_page_url}}]\n' >"$SITE/posts/index.md"
+build --quiet
+same posts/index.md '1/1 []
+'
+lacks posts/page/2/index.md
+
+# bad values and non-index pages are ignored with a warning
+printf -- '---\npaginate: "zero"\n---\nx\n' >"$SITE/posts/index.md"
+printf -- '---\npaginate: "2"\n---\nx\n' >"$SITE/lone.md"
+build
+status 0
+err_has 'posts/index.md: paginate must be a whole number from 1 to 100000'
+err_has 'lone.md: paginate only works on an index page'
+
+# a hand-written page in the way wins
+printf -- '---\npaginate: "2"\n---\n{{children}}\n' >"$SITE/posts/index.md"
+mkdir -p "$SITE/posts/page"
+printf 'mine\n' >"$SITE/posts/page/2.md"
+build
+err_has 'posts/page/2/index.md: exists as a page; not generating page 2 of posts/index.md'
+contains posts/page/2/index.md 'mine'
+contains posts/page/3/index.html '<main>'

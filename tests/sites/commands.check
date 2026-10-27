@@ -1,0 +1,147 @@
+# init, new, list, clean, doctor, check, plugins and completions.
+W=$TMP/cmd-work
+mkdir -p "$W"
+# --- init
+"$SSG" init "$W/new-site" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 0
+err_has 'created'
+for f in site.toml skeleton.html templates/base.md index.md .gitignore; do
+  [ -f "$W/new-site/$f" ] && ok || bad "init made no $f"
+done
+"$SSG" --quiet "$W/new-site" 2>"$ERR"; rc=$?
+status 0
+[ -f "$W/new-site/dist/index.html" ] && ok || bad "init'ed site did not build"
+grep -qF 'Home' "$W/new-site/dist/index.html" && ok || bad "init'ed index lacks its title"
+"$SSG" init "$W/new-site" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 1
+err_has 'already exists'
+"$SSG" init "$W/one" "$W/two" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 2
+# --- new
+(cd "$W/new-site" && "$SSG" new ../evil >"$TMP/out.txt" 2>"$ERR"); rc=$?
+status 1
+err_has 'inside the current directory'
+[ ! -e "$W/evil.md" ] && ok || bad "new wrote outside the cwd"
+(cd "$W/new-site" && "$SSG" new "$W/abs" >"$TMP/out.txt" 2>"$ERR"); rc=$?
+status 1
+(cd "$W/new-site" && "$SSG" new posts/hello-world >"$TMP/out.txt" 2>"$ERR"); rc=$?
+status 0
+src_same_file=$W/new-site/posts/hello-world.md
+[ "$(cat "$src_same_file")" = "$(printf -- '---\ntitle: "Hello world"\ndate: "2030-01-01"\n---\n')" ] \
+  && ok || bad "new frontmatter: $(cat "$src_same_file")"
+(cd "$W/new-site" && "$SSG" new posts/hello-world.md >"$TMP/out.txt" 2>"$ERR"); rc=$?
+status 1
+err_has 'already exists'
+"$SSG" new >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 2
+# --- list: sorted by URL, with sources
+"$SSG" list "$W/new-site" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 0
+[ "$(cat "$TMP/out.txt")" = "$(printf '/                    index.md\n/posts/hello-world/  posts/hello-world.md')" ] \
+  && ok || bad "list output: $(cat "$TMP/out.txt")"
+"$SSG" list --json "$W/new-site" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 0
+grep -qF '"command":"list","pages":[{"url":"/","source":"index.md"' "$TMP/out.txt" && ok || bad "list json"
+# list builds into a scratch dir: nothing appears or goes stale in dist
+rm -rf "$W/new-site/dist"
+"$SSG" list "$W/new-site" >"$TMP/out.txt" 2>"$ERR"
+[ ! -e "$W/new-site/dist" ] && ok || bad "list wrote dist"
+# --- check: read-only, finds orphans, missing alt text and unknown keys
+CS=$W/check-site
+mkdir -p "$CS/templates"
+cp "$W/new-site/site.toml" "$W/new-site/skeleton.html" "$CS/"
+printf -- '---\ntitle: "Home"\n---\n[a](a/) ![](x.png) ![fine](y.png) {{nope}} \\{{literal}}\n' >"$CS/index.md"
+mkdir -p "$CS/a" "$CS/b"
+printf '# A\n' >"$CS/a.md"
+printf '# B\n' >"$CS/b.md"
+printf 'x' >"$CS/x.png"; printf 'y' >"$CS/y.png"
+"$SSG" check "$CS" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 0
+err_has 'index.md: unknown template key {{nope}}'
+err_lacks '{{literal}}'
+err_has 'index.md: 1 image without alt text'
+err_has 'b.md: orphan page: nothing links to /b/'
+err_lacks 'a.md: orphan'
+err_lacks 'index.md: orphan'
+err_has 'checked 3 pages, 3 warnings'
+[ ! -e "$CS/dist" ] && ok || bad "check wrote dist"
+"$SSG" check --fail-on-warning --quiet "$CS" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 3
+"$SSG" check --json --quiet "$CS" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 0
+grep -qF '{"file":"b.md","message":"orphan page: nothing links to /b/"}' "$TMP/out.txt" && ok || bad "check json"
+"$SSG" check "$W/new-site" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 0
+err_has 'posts/hello-world.md: orphan page'
+err_lacks 'index.md: orphan'
+"$SSG" build --quiet --fail-on-warning "$W/new-site" 2>"$ERR"; rc=$?
+status 0
+# --- clean: only a dist ssg made
+"$SSG" --quiet "$W/new-site" 2>"$ERR"
+"$SSG" clean "$W/new-site" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 0
+[ -z "$(ls -A "$W/new-site/dist")" ] && ok || bad "clean left files"
+mkdir -p "$W/new-site/dist" && echo keep >"$W/new-site/dist/mine.txt"
+"$SSG" clean "$W/new-site" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 1
+err_has 'not cleaning'
+[ -f "$W/new-site/dist/mine.txt" ] && ok || bad "clean removed a foreign dist"
+# --- doctor
+"$SSG" doctor "$W/new-site" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 0
+grep -q '^ok    config:' "$TMP/out.txt" && ok || bad "doctor config line"
+grep -q '^warn  dist:' "$TMP/out.txt" && ok || bad "doctor dist warning: $(cat "$TMP/out.txt")"
+"$SSG" doctor --fail-on-warning "$W/new-site" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 3
+rm -rf "$W/new-site/dist"
+printf '<main></main>\n{{if x}}\n' >"$W/new-site/skeleton.html"
+"$SSG" doctor --json "$W/new-site" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 1
+grep -qF '"ok":false' "$TMP/out.txt" && grep -qF '"status":"error","name":"skeleton"' "$TMP/out.txt" \
+  && ok || bad "doctor json: $(cat "$TMP/out.txt")"
+"$SSG" doctor "$W/missing" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 1
+grep -q '^error config: missing site.toml' "$TMP/out.txt" && ok || bad "doctor on a missing config"
+# --- plugins (the running ones are tested in plugin.check)
+mkdir -p "$W/pl"
+printf 'dist = "dist"\ntemplates = "t"\nskeleton = "s.html"\n[plugin.search]\nx = 1\n[plugin.off]\nenabled = false\n' >"$W/pl/site.toml"
+printf '<main></main>\n' >"$W/pl/s.html"
+(cd "$W/pl" && "$SSG" plugins list >"$TMP/out.txt" 2>"$ERR"); rc=$?
+status 0
+grep -q '^search  error: ssg-plugin-search is not on PATH' "$TMP/out.txt" && ok || bad "plugins list: $(cat "$TMP/out.txt")"
+grep -q '^off  disabled' "$TMP/out.txt" && ok || bad "plugins list lacks the disabled plugin"
+(cd "$W/pl" && "$SSG" --json plugins list >"$TMP/out.txt" 2>"$ERR"); rc=$?
+status 0
+grep -qF '"name":"search","enabled":true,"required":true,"resolved":false' "$TMP/out.txt" && ok \
+  || bad "plugins list --json: $(cat "$TMP/out.txt")"
+(cd "$W/pl" && "$SSG" plugins meta other >"$TMP/out.txt" 2>"$ERR"); rc=$?
+status 1
+err_has 'no [plugin.other] table'
+(cd "$W/pl" && "$SSG" plugins meta search >"$TMP/out.txt" 2>"$ERR"); rc=$?
+status 1
+err_has 'ssg-plugin-search is not on PATH'
+(cd "$W/pl" && "$SSG" plugins >"$TMP/out.txt" 2>"$ERR"); rc=$?
+status 2
+"$SSG" build --no-plugins --quiet "$W/pl" 2>"$ERR"; rc=$?
+status 0
+"$SSG" build --quiet "$W/pl" 2>"$ERR"; rc=$?
+status 1
+err_has "plugin 'search': ssg-plugin-search is not on PATH"
+"$SSG" doctor "$W/pl" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 1
+grep -q '^error plugin search: ssg-plugin-search is not on PATH' "$TMP/out.txt" && ok || bad "doctor: $(cat "$TMP/out.txt")"
+# --- completions
+for sh in bash zsh fish; do
+  "$SSG" completions $sh >"$TMP/out.txt" 2>"$ERR"; rc=$?
+  status 0
+  grep -q 'doctor' "$TMP/out.txt" && ok || bad "$sh completions lack doctor"
+done
+"$SSG" completions tcsh >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 2
+# a command named like a directory still builds as a dir when written ./list
+mkdir -p "$W/list"
+cp "$W/new-site/site.toml" "$W/list/"; printf '<main></main>\n' >"$W/list/skeleton.html"
+echo '# x' >"$W/list/index.md"
+(cd "$W" && "$SSG" --quiet ./list 2>"$ERR"); rc=$?
+status 0
+[ -f "$W/list/dist/index.html" ] && ok || bad "./list was not built as a dir"

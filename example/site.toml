@@ -9,6 +9,25 @@ clean = true
 # gitignore-style, on top of .assetignore files.
 ignore = ["*.psd"]
 
+# Atom feed of the dated pages under blog/ (needs base_url).
+[feed]
+section = "blog"
+title = "ssg example"
+author = "Rajdeep"
+limit = 10
+
+# Tag pages: /tags/ and /tags/<tag>/, from the `tags` frontmatter value.
+[taxonomy.tags]
+
+# Default is allow-all; disallow adds Disallow lines.
+[robots]
+disallow = ["/notes/"]
+
+# Stylesheet options. {{asset "style.css"}} in the skeleton links the fingerprinted copy.
+[css]
+minify = false       # true: strip comments and whitespace from every .css file
+inline_limit = 16384 # warn when {{inline "x.css"}} embeds a larger file (bytes)
+
 [markdown]
 html = true          # raw HTML passes through
 scripts = false      # but <script>, on*="..." and javascript: URLs don't

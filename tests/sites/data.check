@@ -1,0 +1,62 @@
+# data/*.toml and data/*.json become {{data.<file>.<key>}}
+minimal_site
+mkdir -p "$SITE/data"
+cat >"$SITE/data/site.toml" <<'T'
+author = "Ann"
+year = 2026
+live = true
+tags = ["a", "b"]
+note = "braces {{x}} stay"
+[social]
+mastodon = "@ann"
+T
+cat >"$SITE/data/nav.json" <<'J'
+{"items": [{"label": "Home", "url": "/"}, {"label": "Café"}],
+ "n": -1.5e2, "ok": false, "none": null, "empty": {}, "bad key": 1}
+J
+printf 'other\n' >"$SITE/data/readme.txt"
+cat >"$SITE/index.md" <<'M'
+---
+title: Home
+---
+{{data.site.author}} {{data.site.year}} {{data.site.live}} {{data.site.tags.1}} {{data.site.tags.length}}
+{{data.site.social.mastodon}} / {{data.site.note}}
+{{data.nav.items.0.label}} {{data.nav.items.1.label}} {{data.nav.items.length}} {{data.nav.n}} {{data.nav.ok}}
+{{if data.nav.none}}none-true{{else}}none-false{{end}} {{if data.site.nothing}}x{{else}}absent{{end}}
+M
+build
+status 0
+contains index.md 'Ann 2026 true b 2'
+contains index.md '@ann / braces {{x}} stay'
+contains index.md 'Home Café 2 -1.5e2 false'
+contains index.md 'none-false absent'
+err_has "key 'data.nav.bad key' is not usable"
+lacks data/site.toml
+lacks data/nav.json
+has data/readme.txt
+
+# page frontmatter beats data; a template can use data in a title
+printf -- '---\ntitle: "By {{data.site.author}}"\ndata.site.author: "Bo"\n---\n{{data.site.author}}\n' >"$SITE/p.md"
+build --quiet
+status 0
+contains p/index.md 'Bo'
+contains p/index.html '<title>By Bo</title>'
+
+# bad data stops the build and names the file and line
+printf '{"a": [1, 2,\n 3 4]}' >"$SITE/data/bad.json"
+build --quiet
+status 1
+err_has 'data/bad.json: line 2: expected'
+printf 'x = 1.5\n' >"$SITE/data/bad.json"
+rm "$SITE/data/bad.json"
+printf 'x = 1.5\n' >"$SITE/data/bad.toml"
+build --quiet
+status 1
+err_has 'data/bad.toml:'
+
+# the same name in both formats: the later file in sort order wins, with a warning
+rm "$SITE/data/bad.toml"
+printf '{"author": "Json"}' >"$SITE/data/site.json"
+build
+status 0
+err_has 'data/site.toml: replaces the keys of another site data file'

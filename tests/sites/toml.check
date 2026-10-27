@@ -1,0 +1,200 @@
+minimal_site
+echo '<b>raw</b>' >"$SITE/index.md"
+base='dist = "dist"
+templates = "templates"
+skeleton = "skeleton.html"
+'
+# toml TEXT: site.toml = the base keys followed by TEXT.
+toml() { printf '%s%s\n' "$base" "$1" >"$SITE/site.toml"; }
+
+# A dotted key is the same as the key under its table.
+toml 'markdown.html = false'
+build --quiet
+status 0
+contains index.html '&lt;b&gt;raw&lt;/b&gt;'
+toml '[markdown]
+html = false'
+build --quiet
+status 0
+contains index.html '&lt;b&gt;raw&lt;/b&gt;'
+
+# Whitespace around dots, quoted parts, and nested arrays of mixed values parse.
+toml '"markdown" . "html" = false
+ignore = [
+  "a",  # comment
+  "b",
+]
+[plugin.demo]
+enabled = false
+list = [[1, 2], ["x"], true]
+deep.er = -1_000'
+build
+status 0
+err_lacks 'warning'
+contains index.html '&lt;b&gt;raw&lt;/b&gt;'
+
+# Unknown tables warn once, whether named by a header or a dotted key; nothing under them warns.
+toml '[mystery]
+a = 1
+b.c = 2
+[mystery.sub]
+d = 3
+[other.table]
+e = 4'
+build
+status 0
+err_has 'site.toml:4: unknown table [mystery]'
+err_has 'site.toml:9: unknown table [other.table]'
+err_lacks 'mystery.sub'
+err_lacks 'unknown table [other]'
+err_lacks 'unknown key'
+# Also when the sub-table comes first.
+toml '[mystery.sub]
+a = 1
+[mystery]
+b = 2
+c.d = 3
+[other.table]
+[other]'
+build
+status 0
+err_has 'site.toml:4: unknown table [mystery.sub]'
+err_has 'site.toml:9: unknown table [other.table]'
+err_lacks 'unknown table [mystery]'
+err_lacks 'unknown table [other]'
+err_lacks 'unknown key'
+toml 'stray.key = 1'
+build
+status 0
+err_has 'site.toml:4: unknown table [stray]'
+toml '[markdown]
+nope.x = 1
+[markdown.sub]
+y = 1'
+build
+status 0
+err_has "site.toml:5: unknown key 'nope.x' in [markdown]"
+err_has 'site.toml:6: unknown table [markdown.sub]'
+
+# Conflicts.
+toml '[markdown]
+html = false
+[markdown]'
+build
+status 1
+err_has 'site.toml:6: duplicate table [markdown]'
+toml 'markdown.html = false
+markdown.html = true'
+build
+status 1
+err_has "site.toml:5: duplicate key 'markdown.html'"
+toml 'a.b = 1
+[a.b]'
+build
+status 1
+err_has 'site.toml:5: table [a.b] was already defined as a value'
+toml 'a.b = 1
+[a]'
+build
+status 1
+err_has 'site.toml:5: table [a] was already defined by dotted keys'
+toml '[a.b]
+x = 1
+[a]
+b.y = 2'
+build
+status 1
+err_has "site.toml:7: table [a.b] can't be extended with dotted keys; add the key under its header"
+# Same when [a.b] exists only as the parent of a header; it has no header to add the key under.
+toml '[a.b.c]
+[a]
+b.d = 1'
+build
+status 1
+err_has "site.toml:6: table [a.b] can't be extended with dotted keys; give it a [a.b] header"
+toml 'dist.x = 1'
+build
+status 1
+err_has "site.toml:4: 'dist' is not a table"
+toml '[plugin]
+x = 1'
+build
+status 1
+err_has 'site.toml:5: [plugin] holds one table per plugin, like [plugin.x]'
+toml 'plugin = 1'
+build
+status 1
+err_has "site.toml:4: 'plugin' must be a table, like [plugin.<name>]"
+
+# Integers are strict decimal.
+for bad in '007:leading zeros are not allowed' '1__0:between digits' '_1:expected a value' \
+           '1_:between digits' '0x10:only decimal integers' '1.5:only integers' \
+           '1979-05-27:dates and times' 'inf:only integers' '99999999999999999999:out of range'; do
+  toml "[markdown]
+text_width = ${bad%%:*}"
+  build
+  status 1
+  err_has "${bad#*:}"
+done
+toml '[markdown]
+text_width = 1_000'
+build
+status 0
+# The full i64 range is accepted, including LLONG_MIN.
+toml '[plugin.n]
+enabled = false
+min = -9223372036854775808
+max = 9223372036854775807'
+build
+status 0
+toml '[plugin.n]
+min = -9223372036854775809'
+build
+status 1
+err_has 'out of range'
+
+# Still rejected.
+toml 'x = """a"""'
+build
+status 1
+err_has 'multi-line strings are not supported'
+toml 'x = {a = 1}'
+build
+status 1
+err_has 'inline tables are not supported'
+toml '[[x]]'
+build
+status 1
+err_has 'arrays of tables are not supported'
+printf '%sx = "a\001b"\n' "$base" >"$SITE/site.toml"
+build
+status 1
+err_has 'site.toml:4: control characters in strings must be escaped'
+for c in '\001' '\177' '\r'; do
+  printf '%sx = 1 # a%bb\n' "$base" "$c" >"$SITE/site.toml"
+  build
+  status 1
+  err_has 'site.toml:4: control characters are not allowed in comments'
+done
+# A tab, or the CR of a CRLF line ending, is fine.
+printf '%s# a\tb\r\n[markdown] # c\r\nhtml = false # d\r\n' "$base" >"$SITE/site.toml"
+build
+status 0
+err_lacks 'warning'
+# Arrays nest up to 64 deep; deeper is an error, not a stack overflow.
+deep() { printf '%*s' "$1" '' | tr ' ' "$2"; }
+toml "x = $(deep 64 '[')$(deep 64 ']')"
+build
+status 0
+toml "x = $(deep 65 '[')$(deep 65 ']')"
+build
+status 1
+err_has 'site.toml:4: arrays nest too deeply (more than 64 levels)'
+toml "x = $(deep 200000 '[')"
+build
+status 1
+err_has 'arrays nest too deeply'
+toml 'ignore = ["a", 1]'
+build
+status 1
+err_has "'ignore' must be an array of strings"

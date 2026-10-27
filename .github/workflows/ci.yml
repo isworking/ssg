@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPEC_URL: https://spec.commonmark.org/0.31.2/spec.json
+  SPEC_SHA256: d431b29d97b6f73e69d547109cf5081578fac931e72afe95639ebe766c1b2a20
+  UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+
+jobs:
+  build-test:
+    name: ${{ matrix.toolchain.os }} ${{ matrix.toolchain.cxx }} ${{ matrix.build_type }}
+    runs-on: ${{ matrix.toolchain.os }}
+    strategy:
+      fail-fast: false
+      # The toolchain is an axis of its own: bare `include` entries with only os/cxx would each be
+      # added to every build_type and overwrite the one before, leaving just the macOS jobs.
+      matrix:
+        build_type: [Debug, Release]
+        toolchain:
+          - { os: ubuntu-latest, cxx: g++ }
+          - { os: ubuntu-latest, cxx: clang++ }
+          - { os: macos-latest, cxx: c++ }
+    env:
+      CXX: ${{ matrix.toolchain.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch CommonMark spec.json
+        run: |
+          curl -fsSL --retry 3 -o tests/spec.json "$SPEC_URL"
+          echo "$SPEC_SHA256  tests/spec.json" | shasum -a 256 -c -
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSSG_WERROR=ON
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Version
+        run: build/ssg --version
+      - name: Test
+        run: |
+          ctest --test-dir build -N | grep -q commonmark  # spec.json was picked up
+          ctest --test-dir build --output-on-failure
+
+  sanitize:
+    name: ubuntu clang ASan+UBSan
+    runs-on: ubuntu-latest
+    env:
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch CommonMark spec.json
+        run: |
+          curl -fsSL --retry 3 -o tests/spec.json "$SPEC_URL"
+          echo "$SPEC_SHA256  tests/spec.json" | shasum -a 256 -c -
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Debug -DSSG_WERROR=ON -DSSG_SANITIZE=ON
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  fuzz:
+    name: ubuntu clang libFuzzer
+    runs-on: ubuntu-latest
+    env:
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the clang runtime libraries (libFuzzer)
+        run: |
+          v=$(clang++ --version | sed -n 's/.*clang version \([0-9]*\).*/\1/p' | head -n 1)
+          sudo apt-get update -q
+          sudo apt-get install -y -q "libclang-rt-$v-dev"
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Debug -DSSG_FUZZ=ON -DSSG_SANITIZE=ON
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Fuzz each target for 60 seconds
+        run: |
+          mkdir -p artifacts
+          status=0
+          for t in markdown_html markdown_text sanitizer template toml ignore json; do
+            echo "::group::fuzz_$t"
+            mkdir -p "work/$t"
+            # New inputs go to work/$t; fuzz/corpus stays as committed.
+            build/fuzz/fuzz_$t "work/$t" "fuzz/corpus/fuzz_$t" \
+              -max_total_time=60 -timeout=25 -artifact_prefix="artifacts/fuzz_$t-" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+      - name: Upload crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts
+          path: artifacts/
+          if-no-files-found: ignore

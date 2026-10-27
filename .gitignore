@@ -4,6 +4,14 @@
 *.o
 example/dist
 example/out
+example/manifest.json
 tests/spec.json
 .cache/
 compile_commands.json
+/build-*/
+# libFuzzer artifacts
+crash-*
+leak-*
+timeout-*
+oom-*
+slow-unit-*

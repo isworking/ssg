@@ -1,0 +1,18 @@
+dist = "dist"
+templates = "templates"
+skeleton = "skeleton.html"
+
+# Enables sitemap.xml.
+base_url = "https://example.com"
+# Empty dist before each build (only when dist is inside this dir).
+clean = true
+# gitignore-style, on top of .assetignore files.
+ignore = ["*.psd"]
+
+[markdown]
+html = true          # raw HTML passes through
+scripts = false      # but <script>, on*="..." and javascript: URLs don't
+heading_ids = true
+autolinks = true
+extensions = true
+text_width = 80

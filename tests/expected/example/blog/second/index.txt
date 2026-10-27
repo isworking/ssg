@@ -1,0 +1,9 @@
+Second post
+===========
+
+Written by Rajdeep on 2026-06-01. About 1 min read.
+
+Tags:
+
+- markdown </tags/markdown/>
+- ssg </tags/ssg/>

@@ -1,0 +1,34 @@
+# canonical_url, absolute_url, og_title and og_description
+minimal_site
+cat >"$SITE/skeleton.html" <<'HTML'
+<html><head><title></title>
+{{if canonical_url}}<link rel="canonical" href="{{canonical_url}}">{{end}}
+<meta property="og:title" content="{{og_title}}">
+<meta property="og:description" content="{{og_description}}">
+</head><body><main></main>
+<p>{{absolute_url}}</p></body></html>
+HTML
+mkdir -p "$SITE/blog"
+printf -- '---\ntitle: "Home"\n---\nx\n' >"$SITE/index.md"
+printf -- '---\ntitle: "Fish & Chips"\ndescription: "A <b> post"\n---\nx\n' >"$SITE/blog/post.md"
+printf -- '---\ntitle: "Moved"\ncanonical_url: "https://other.example/x"\n---\nx\n' >"$SITE/moved.md"
+printf 'x\n' >"$SITE/untitled.md"
+
+# no base_url: the URL keys stay undefined, the og keys still work
+build --quiet
+status 0
+omits blog/post/index.html 'rel="canonical"'
+contains blog/post/index.html '<p>{{absolute_url}}</p>'
+contains blog/post/index.html 'og:title" content="Fish &amp; Chips"'
+contains blog/post/index.html 'og:description" content="A &lt;b&gt; post"'
+contains untitled/index.html 'og:title" content="untitled"'
+contains untitled/index.html 'og:description" content=""'
+
+printf 'base_url = "https://example.com/"\n' >>"$SITE/site.toml"
+build --quiet
+status 0
+contains blog/post/index.html '<link rel="canonical" href="https://example.com/blog/post/">'
+contains blog/post/index.html '<p>https://example.com/blog/post/</p>'
+contains index.html '<link rel="canonical" href="https://example.com/">'
+contains moved/index.html '<link rel="canonical" href="https://other.example/x">'
+contains moved/index.html '<p>https://example.com/moved/</p>'

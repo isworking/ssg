@@ -1,0 +1,48 @@
+# Symlinks to files are skipped by default; follow_symlinks = true copies them.
+minimal_site
+echo secret >"$TMP/outside.txt"
+echo '# Linked' >"$TMP/outside.md"
+echo ok >"$SITE/real.txt"
+ln -s "$TMP/outside.txt" "$SITE/link.txt"
+ln -s "$TMP/outside.md" "$SITE/linked.md"
+ln -s real.txt "$SITE/alias.txt"
+build
+status 0
+has real.txt
+lacks link.txt
+lacks linked/index.html
+lacks alias.txt
+err_has "skipping link.txt (a symlink; set follow_symlinks = true"
+err_has "skipping linked.md (a symlink"
+build --quiet
+err_lacks "a symlink"
+
+printf 'follow_symlinks = true\n' >>"$SITE/site.toml"
+build
+status 0
+has link.txt
+has alias.txt
+has linked/index.html
+err_lacks "a symlink"
+
+# The raw HTML allow-list, extended from [markdown].
+rm "$SITE/link.txt" "$SITE/alias.txt" "$SITE/linked.md"
+printf '<my-card x="1" onclick="e()">hi</my-card> <b style="c:d" data-a="1">b</b>\n' >"$SITE/index.md"
+build
+status 0
+contains index.html "&lt;my-card"
+contains index.html '<b data-a="1">b</b>'
+printf '\n[markdown]\nallow_tags = ["My-Card"]\nallow_attrs = ["x", "style"]\n' >>"$SITE/site.toml"
+build
+status 0
+contains index.html '<my-card x="1">hi</my-card>'
+contains index.html '<b style="c:d" data-a="1">b</b>'
+printf '\n' >"$SITE/index.md"
+printf '[markdown]\nallow_tags = [5]\n' >"$SITE/site.toml"
+build
+status 1
+err_has "'allow_tags' must be an array of strings"
+printf '[markdown]\nallow_attrs = ["a b"]\n' >"$SITE/site.toml"
+build
+status 1
+err_has "is not a plain name"

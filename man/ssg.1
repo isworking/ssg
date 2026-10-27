@@ -6,10 +6,27 @@
 .Nd build a static site of HTML, markdown and plain-text pages
 .Sh SYNOPSIS
 .Nm
+.Op Cm build
 .Op Fl \-drafts
 .Op Fl \-check-links
-.Op Fl \-quiet
-.Ar content-dir
+.Op Fl \-target Ar name
+.Op Ar options
+.Op Ar content-dir
+.Nm
+.Cm init | serve | watch | check | list | clean | doctor
+.Op Ar options
+.Op Ar dir
+.Nm
+.Cm new
+.Ar path
+.Nm
+.Cm plugins list
+.Nm
+.Cm plugins meta
+.Ar name
+.Nm
+.Cm completions
+.Ar bash | zsh | fish
 .Nm
 .Cm render
 .Op Fl \-strict
@@ -118,8 +135,142 @@ Frontmatter is not parsed, templates are not evaluated and
 is not read: a
 .Li ---
 block renders as markdown.
-Options are the built-in defaults: raw HTML on and sanitized, extensions,
+Options are the built-in defaults: raw HTML on and allow-listed, extensions,
 heading ids and bare autolinks on, text wrapped at 80 columns.
+.Ss Commands
+The first argument is a command only if it is one of the names below; anything else is the
+legacy form, and
+.Nm
+.Ar dir
+means
+.Nm
+.Cm build
+.Ar dir
+throughout 1.x.
+A directory with a command's name is written
+.Pa ./list .
+.Ar dir
+defaults to the current directory, and options go after the command.
+.Bl -tag -width "completions"
+.It Cm build
+Build the site, as described above.
+.It Cm init
+Create
+.Ar dir
+with
+.Pa site.toml , skeleton.html , templates/base.md , index.md
+and a
+.Pa .gitignore
+holding
+.Pa dist/ .
+Refuses if any of them exists.
+.It Cm new Ar path
+Write
+.Ar path Ns Pa .md
+with
+.Ic title
+(from the file name) and
+.Ic date
+(today, or from
+.Ev SOURCE_DATE_EPOCH )
+frontmatter.
+Refuses an existing file, an absolute path and any path containing
+.Pa .. .
+.It Cm serve
+Build, serve dist on 127.0.0.1 and rebuild when a file changes.
+Open pages reload themselves.
+Misses get the
+.Pa /404/
+page or
+.Pa 404.html
+with status 404.
+Takes
+.Fl \-port Ar n
+(default 8000, 0 for any free port),
+.Fl \-open
+and
+.Fl \-drafts .
+.It Cm watch
+Build, then rebuild when a file changes.
+.It Cm check
+Build into a scratch directory and report what
+.Fl \-check-links
+reports, plus pages nothing links to, images without alt text and
+.Li {{keys}}
+that nothing defines.
+Findings are warnings, so the exit status is 0 unless
+.Fl \-fail-on-warning
+is given.
+.It Cm list
+Print each page's URL and source file, sorted by URL.
+.It Cm clean
+Empty dist, but only if it is missing, empty or holds the
+.Pa .ssg-dist
+marker.
+.It Cm doctor
+Check the config, dist, templates, skeleton and plugin tables, and warn when
+.Pa dist/.ssg-dist
+would be deployed because no
+.Pa .assetsignore ,
+.Pa .vercelignore
+or
+.Pa vercel.json
+names it.
+Exit 1 if any check is an error.
+.It Cm plugins list
+List the
+.Sy [plugin.name]
+tables in file order, each with its version and path, or why it cannot be used.
+.It Cm plugins meta Ar name
+Run the plugin's
+.Fl \-meta
+and print the JSON object it returns on one line.
+Exit 1 if there is no such table or the plugin cannot be run.
+.It Cm completions Ar shell
+Print a completion script for bash, zsh or fish.
+.El
+.Ss Global options
+Accepted by every command except
+.Cm render ,
+after the command name.
+.Fl \-name Ns = Ns Ar value
+works for options that take a value.
+.Bl -tag -width "--fail-on-warning"
+.It Fl \-config Ar file
+Read this file instead of
+.Ar dir Ns Pa /site.toml .
+.It Fl \-output Ar dir
+Build into
+.Ar dir
+instead of the configured dist.
+.It Fl \-base-url Ar url
+Override
+.Ic base_url .
+.It Fl \-verbose
+One line on standard error per page and copied file.
+.It Fl \-quiet , Fl q
+No summary line and no notes.
+.It Fl \-color Ar auto | always | never
+Colour the
+.Dq warning:
+label.
+.Ar auto
+colours only a terminal, and not when
+.Ev NO_COLOR
+is set.
+.It Fl \-json
+One line of JSON on standard output (see
+.Pa docs/cli.md
+for its fields); messages stay on standard error.
+.It Fl \-fail-on-warning
+Exit 3 if any warning was printed.
+.It Fl \-no-plugins
+Don't start the plugins in
+.Pa site.toml .
+The manifest's
+.Li plugins
+is then empty.
+.El
 .Ss Build options
 Options and
 .Ar content-dir
@@ -135,6 +286,28 @@ and one named
 as
 .Pa ./render .
 .Bl -tag -width "--check-links"
+.It Fl \-target Ar name
+With
+.Cm build :
+also write the files that serve each page in the format the
+.Li Accept
+header asks for:
+.Ar name
+is
+.Li cloudflare
+.Pq Pa worker.js , wrangler.jsonc , _headers ,
+.Li vercel
+.Pq Pa vercel.json
+or
+.Li nginx
+.Pq Pa nginx.ssg.conf , nginx.ssg-maps.conf .
+Overrides
+.Ic deploy.target .
+Files that exist and differ are kept with a warning.
+.It Fl \-force
+With
+.Fl \-target :
+replace files that exist and differ.
 .It Fl \-drafts
 Also build pages whose
 .Ic draft
@@ -166,6 +339,15 @@ attribute in a page's HTML output (skeleton included) that points at nothing in 
 See
 .Sx Link checking .
 Does not change the exit status.
+.It Fl \-incremental
+Keep dist instead of emptying it.
+A file whose bytes are unchanged is not rewritten, a changed one is replaced, and files the build
+no longer produces are removed, so the result equals a clean build.
+Only for a dist ssg owns.
+.Cm serve
+and
+.Cm watch
+always build this way.
 .It Fl \-quiet , Fl q
 No summary line and no notes.
 Warnings and errors still print.
@@ -190,7 +372,7 @@ output, wrapped at 80 columns.
 .It Fl \-no-html
 Escape raw HTML so it shows as text.
 .It Fl \-scripts
-Let
+Turn the raw HTML allow-list off, so
 .Li <script>
 and similar elements,
 .Li on*
@@ -200,9 +382,9 @@ event attributes and
 .Li file:
 and non-image
 .Li data:
-URLs through.
+URLs pass through.
 .It Fl \-no-scripts
-Escape those elements, drop those attributes and neutralize those URLs.
+Escape tags and drop attributes that are not on the allow-list, and neutralize those URLs.
 This is the default, so the flag only undoes an earlier
 .Fl \-scripts
 or
@@ -220,14 +402,23 @@ output and the heading ids cannot be set separately here; a site sets them in th
 table of
 .Pa site.toml .
 .Ss Other options
-Recognised only as the first argument; elsewhere they are unknown options.
+.Fl \-version
+is recognised only as the first argument; elsewhere it is an unknown option.
+.Fl \-help
+also works after a command.
 .Bl -tag -width "--version"
 .It Fl \-help , Fl h
 Print usage and a summary of the options to standard output.
 .It Fl \-version
-Print
-.Dq ssg 0.2.0
+Print the version and the git commit ssg was built from, as in
+.Dq ssg 1.0.0-dev (abc1234) ,
 to standard output.
+Source builds carry the
+.Dq -dev
+suffix; release builds drop it.
+The commit ends in
+.Dq -dirty
+if the tree had uncommitted changes, and is left out when it is unknown.
 Later arguments are ignored.
 .El
 .Ss Link checking
@@ -277,6 +468,10 @@ A path that climbs above the site root is broken, and so is
 Each broken link is reported once per page.
 .Sh ENVIRONMENT
 .Bl -tag -width Ds
+.It Ev NO_COLOR
+If set and not empty,
+.Fl \-color Cm auto
+does not colour.
 .It Ev SOURCE_DATE_EPOCH
 Seconds since 1970-01-01 UTC, used for the
 .Ic build_date
@@ -319,6 +514,11 @@ It is published with the site.
 Written when
 .Ic base_url
 is set, unless the content directory has its own.
+.It Pa manifest.json
+Written beside dist (not inside it) by
+.Ic build ;
+see
+.Xr ssg 5 .
 .El
 .Sh EXIT STATUS
 .Bl -tag -width Ds -compact
@@ -328,6 +528,10 @@ Success, including builds that printed warnings.
 An error: configuration, template, unsafe dist, or file I/O.
 .It 2
 Bad usage; the usage text is printed to standard error.
+.It 3
+Warnings were printed and
+.Fl \-fail-on-warning
+was given.
 .El
 .Sh EXAMPLES
 Build a site and preview it:
@@ -399,6 +603,12 @@ is a full path to the file being evaluated.
 Includes
 .Fl \-
 and options of the other mode.
+.It Ar option Li needs a value
+.It Li --color wants auto, always or never
+.It Li --port wants a number from 0 to 65535
+.It Li plugins needs list or meta <name>
+.It Li new takes one path
+.It Li completions needs bash, zsh or fish
 .It Li one content dir only
 .It Li render takes one input
 .It Li render needs a file or -
@@ -413,7 +623,9 @@ A syntax or type error on line
 for example
 .Li \(aqclean\(aq must be a boolean ,
 .Li duplicate key \(aqdist\(aq ,
-.Li dotted keys are not supported ,
+.Li duplicate table [markdown] ,
+.Li \(aqa\(aq is not a table ,
+.Li leading zeros are not allowed ,
 .Li only integers are supported ,
 .Li \(aqtext_width\(aq must be between 0 and 100000 .
 See
@@ -425,6 +637,8 @@ Also
 and
 .Li unknown table [ Ns Ar t Ns Li \&] .
 Keys inside an unknown table are ignored without further warnings.
+.Li [plugin.\& Ns Ar name Ns Li \&]
+tables are accepted without warnings here; each plugin checks its own keys.
 .El
 .Ss Dist (exit 1, nothing written)
 .Bl -tag -width Ds
@@ -433,6 +647,40 @@ Keys inside an unknown table are ignored without further warnings.
 .It Li dist ( Ns Ar path Ns Li \&) must not contain the skeleton
 .It Li dist ( Ns Ar path Ns Li \&) must not be inside a hidden dir ( Ns Ar part Ns Li \&)
 Only the parts of dist's path below what it shares with the content directory are checked.
+.El
+.Ss Plugins (exit 1)
+.Bl -tag -width Ds
+.It Li plugin \(aq Ns Ar name Ns Li \(aq: ssg-plugin- Ns Ar name Ns Li " is not on PATH ..."
+Or
+.Ar path Li " is not an executable file" .
+With
+.Li required = false
+a warning instead.
+.It Li plugin \(aq Ns Ar name Ns Li \(aq: needs plugin protocol Ar N Ns Li ", but this ssg speaks 1"
+Also problems with
+.Fl \-meta :
+it timed out, exited non-zero, printed no JSON, or names another plugin.
+.It Li plugin \(aq Ns Ar name Ns Li \(aq, hook \(aq Ns Ar hook Ns Li \(aq: Ar what
+.Ar what
+is
+.Li timed out after Ns Ar N Ns Li s ,
+.Li exited before answering ,
+.Li answered with invalid JSON ,
+.Li answered with the wrong id ,
+.Li failed: Ar message
+(the plugin's own error),
+.Li the result must be a string ,
+or, for
+.Li asset ,
+.Li \(aq Ns Ar path Ns Li \(aq is not a path inside dist .
+.It Li [plugin. Ns Ar name Ns Li \&] \(aq Ns Ar key Ns Li \(aq must be Ar type Ns Li ", not " Ar type
+A config value of the wrong type for the plugin's
+.Fl \-meta .
+.It Li "warning: [plugin.name] has the key 'k', which name does not declare"
+.It Li "warning: plugin name: text"
+The plugin wrote
+.Ar text
+to standard error.
 .El
 .Ss Skeleton (exit 1)
 Prefixed with the skeleton's path relative to
@@ -529,6 +777,12 @@ is the value from the page, decoded, without query or fragment.
 contains a
 .Pa .git
 file or directory.
+Not shown with
+.Fl \-quiet ,
+not counted as a warning.
+.It Li note: skipping Ar path Li (a symlink; set follow_symlinks = true to copy what it points to)
+.Ar path
+is a symbolic link to a file.
 Not shown with
 .Fl \-quiet ,
 not counted as a warning.

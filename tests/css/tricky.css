@@ -1,0 +1,12 @@
+@charset "utf-8";
+/*! Tricky v1 | MIT */
+/* dropped */
+:root { --gap : 1rem ; --empty:; --font: "A  B", 'C;D' , serif }
+a  :hover , a:not( .x )::after{content:"}{ /* not a comment */ \"";color:RED}
+.w{width:calc( 100% - (2 * var(--gap)) );margin:calc(1px+2px) -1px calc(-1 * 2px)}
+.i{background:url( "a b.png" ) no-repeat,URL(data:image/svg+xml;utf8,<svg xmlns='x'> </svg>);}
+.e\:x\ y{top:0;}
+@media screen and (min-width: 600px) , print { .m { margin : 0 auto !important ; } }
+@font-face{font-family:F;src:url(f.woff2)format("woff2")}
+.last{color:red;;}
+.n { &:hover { color : blue } }

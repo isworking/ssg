@@ -1,0 +1,119 @@
+# deploy adapters: --target / [deploy] target, [headers], never overwriting without --force
+src_has() { [ -e "$SITE/$1" ] && ok || bad "missing $SITE/$1"; }
+src_lacks() { [ ! -e "$SITE/$1" ] && ok || bad "unexpected $SITE/$1"; }
+src_contains() { grep -qF -- "$2" "$SITE/$1" 2>/dev/null && ok || bad "$1 lacks: $2"; }
+
+# no target, no adapter files
+build --quiet
+status 0
+src_lacks worker.js
+src_lacks vercel.json
+lacks _headers
+lacks .assetsignore
+
+# an unknown target is a usage error
+build --quiet --target netlify
+status 2
+
+# cloudflare
+build --quiet --target cloudflare
+status 0
+src_has worker.js
+src_has wrangler.jsonc
+src_contains wrangler.jsonc '"directory": "./dist"'
+src_contains wrangler.jsonc '"run_worker_first": true'
+src_contains worker.js 'const LINK = true;'
+src_contains worker.js 'const PAGE_CACHE = "public, max-age=300";'
+same .assetsignore '.ssg-dist
+'
+same _headers '/style.494f4abfd7.css
+  Cache-Control: public, max-age=31536000, immutable
+'
+lacks worker.js
+lacks wrangler.jsonc
+if command -v node >/dev/null 2>&1; then
+  out=$(node "$HERE/deploy/worker_test.mjs" "$SITE/worker.js" "$DIST" 2>&1) && ok || bad "worker: $out"
+fi
+
+# a second build leaves the files alone and says nothing; a changed file is kept with a warning
+build --target cloudflare
+status 0
+err_lacks "exists and differs"
+printf '// mine\n' >"$SITE/worker.js"
+build --target cloudflare
+status 0
+err_has "worker.js exists and differs"
+src_same worker.js '// mine
+'
+build --quiet --target cloudflare --force
+src_contains worker.js 'export default'
+
+# a hand-written _headers wins
+printf '/x\n  A: b\n' >"$SITE/_headers"
+build --target cloudflare
+err_has "_headers exists in the content dir"
+same _headers '/x
+  A: b
+'
+rm "$SITE/_headers" "$SITE/worker.js" "$SITE/wrangler.jsonc"
+
+# [headers]: version on, link and format off
+printf '[deploy]\ntarget = "cloudflare"\n\n[headers]\nversion = true\nlink = false\nformat = false\npage_cache = ""\n' >>"$SITE/site.toml"
+build --quiet
+status 0
+src_contains worker.js 'const LINK = false;'
+src_contains worker.js 'const FORMAT = false;'
+src_contains worker.js 'const PAGE_CACHE = "";'
+contains _headers '/*
+  X-SSG-Version: '
+rm "$SITE/worker.js" "$SITE/wrangler.jsonc"
+
+# check and list do not write adapter files
+"$SSG" check "$SITE" >/dev/null 2>&1
+src_lacks worker.js
+
+# the toml target is validated
+printf '[deploy]\ntarget = "heroku"\n' >"$TMP/bad.toml"
+sed -n '1,/^base_url/p' "$SITE/site.toml" >"$TMP/base.toml"
+cat "$TMP/base.toml" "$TMP/bad.toml" >"$SITE/site.toml"
+build --quiet
+status 1
+err_has "deploy.target"
+
+# vercel
+sed -n '1,/^base_url/p' "$TMP/base.toml" >"$SITE/site.toml"
+build --quiet --target vercel
+status 0
+src_has vercel.json
+src_contains vercel.json '"trailingSlash": true'
+src_contains vercel.json '"outputDirectory": "dist"'
+src_contains vercel.json '"src": "^/((?:.+/)?)$", "dest": "/$1index.md"'
+src_contains vercel.json '"key": "Accept", "value": ".*text/markdown.*"'
+src_contains vercel.json '"X-SSG-Format": "txt"'
+src_contains vercel.json '"src": "^/\\.ssg-dist$", "status": 404'
+lacks vercel.json
+if command -v node >/dev/null 2>&1; then
+  node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$SITE/vercel.json" && ok || bad "vercel.json is not JSON"
+fi
+
+# nginx
+printf '\n[headers]\nversion = true\n' >>"$SITE/site.toml"
+build --quiet --target nginx
+status 0
+src_contains nginx.ssg-maps.conf 'map $http_accept $ssg_ext {'
+src_contains nginx.ssg.conf 'try_files ${uri}index.$ssg_ext =404;'
+src_contains nginx.ssg.conf 'location ~ /\.ssg-dist { return 404; }'
+src_contains nginx.ssg.conf 'error_page 404 /404/index.$ssg_ext;'
+# mime.types is included beside our types block, never inside it
+src_contains nginx.ssg.conf 'include mime.types;'
+src_lacks_nested=$(grep -c '^  include mime.types' "$SITE/nginx.ssg.conf")
+[ "$src_lacks_nested" = 0 ] && ok || bad "mime.types is nested in a types block"
+# the fingerprinted location repeats the opt-in version header (add_header there replaces the set)
+[ "$(grep -c 'add_header X-SSG-Version' "$SITE/nginx.ssg.conf")" = 2 ] && ok || bad "X-SSG-Version not repeated in fingerprint location"
+lacks nginx.ssg.conf
+
+# doctor accepts the generated .assetsignore as the exclusion
+rm -f "$SITE/.assetsignore"
+build --quiet --target cloudflare
+"$SSG" doctor "$SITE" >"$TMP/doctor.out" 2>&1
+grep -q "marker" "$TMP/doctor.out" && bad "doctor flags .ssg-dist despite .assetsignore" || ok

@@ -1,0 +1,16 @@
+# doctor warns when .ssg-dist sits in dist and nothing excludes it from the deploy
+minimal_site
+printf 'x\n' >"$SITE/index.md"
+"$SSG" doctor "$SITE" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 0
+grep -q '^ok    config:' "$TMP/out.txt" && ok || bad "doctor config line"
+grep -q '^warn  marker:' "$TMP/out.txt" && bad "marker warning before any build" || ok
+"$SSG" --quiet "$SITE" >/dev/null 2>"$ERR"
+"$SSG" doctor "$SITE" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+grep -q '^warn  marker: .*\.ssg-dist would be deployed' "$TMP/out.txt" && ok || bad "marker warning: $(cat "$TMP/out.txt")"
+"$SSG" doctor --fail-on-warning "$SITE" >/dev/null 2>"$ERR"; rc=$?
+[ "$rc" -ne 0 ] && ok || bad "--fail-on-warning should fail on the marker warning"
+printf '.ssg-dist\n' >"$SITE/.assetsignore"
+"$SSG" doctor "$SITE" >"$TMP/out.txt" 2>"$ERR"; rc=$?
+status 0
+grep -q '^warn  marker:' "$TMP/out.txt" && bad "marker warning despite .assetsignore" || ok

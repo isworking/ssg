@@ -1,0 +1,69 @@
+# --incremental: dist is kept, unchanged files keep their mtime, stale files go, and the result is
+# byte-identical to a clean build. Uses a copy of example/ (feeds, taxonomies, fingerprints...).
+S=$SITE/ex
+mkdir -p "$SITE"
+cp -R "$ROOT/example" "$S"
+rm -rf "$S/dist"
+"$SSG" build --quiet "$S" >/dev/null 2>"$ERR"; rc=$?
+status 0
+# same_as_clean LABEL: a clean build of a copy of $S must equal $S/dist
+same_as_clean() {
+  rm -rf "$SITE/clean"
+  cp -R "$S" "$SITE/clean"
+  rm -rf "$SITE/clean/dist"
+  "$SSG" build --quiet "$SITE/clean" >/dev/null 2>&1
+  if diff -r "$SITE/clean/dist" "$S/dist" >"$TMP/inc.diff"; then ok; else
+    bad "$1: incremental dist differs from a clean build"; head -10 "$TMP/inc.diff" | sed 's/^/    /'
+  fi
+}
+# Nothing changed: no file is rewritten.
+touch -t 200001010000 "$S/dist/index.html" "$S/dist/index.md"
+"$SSG" build --incremental "$S" >/dev/null 2>"$ERR"; rc=$?
+status 0
+err_has " 0 written, "
+[ ! "$S/dist/index.html" -nt "$S/site.toml" ] && ok || bad "unchanged index.html was rewritten"
+same_as_clean "no change"
+# An edit rewrites that page and what lists it, nothing else needs to match by luck.
+printf '\nAn added line, mentioned in the incremental test.\n' >>"$S/index.md"
+"$SSG" build --incremental --quiet "$S" >/dev/null 2>"$ERR"; rc=$?
+status 0
+grep -qF 'mentioned in the incremental test' "$S/dist/index.html" && ok || bad "edit not built"
+same_as_clean "edit"
+# A removed page, a stray file and an emptied directory disappear.
+printf 'junk' >"$S/dist/stray.txt"
+mkdir -p "$S/dist/old/deep" && printf x >"$S/dist/old/deep/x.txt"
+first_md=$(cd "$S" && ls *.md | grep -v '^index.md$' | grep -v '^404.md$' | head -1)
+rm "$S/$first_md"
+"$SSG" build --incremental --quiet "$S" >/dev/null 2>"$ERR"; rc=$?
+status 0
+[ ! -e "$S/dist/stray.txt" ] && [ ! -e "$S/dist/old" ] && ok || bad "stale files kept"
+same_as_clean "removal"
+# A page turning into a directory and back: file/directory swaps are cleared.
+ROOT_SITE=$SITE
+SITE=$ROOT_SITE/swap
+minimal_site
+printf '# A\n' >"$SITE/a.md"
+"$SSG" build --incremental --quiet "$SITE" >/dev/null 2>"$ERR"
+rm "$SITE/a.md"; mkdir "$SITE/a"; printf '# B\n' >"$SITE/a/b.md"
+"$SSG" build --incremental --quiet "$SITE" >/dev/null 2>"$ERR"; rc=$?
+status 0
+[ -e "$SITE/dist/a/b/index.html" ] || [ -e "$SITE/dist/a/b.html" ] && ok || bad "swap not built"
+[ ! -e "$SITE/dist/a.html" ] && [ ! -e "$SITE/dist/a/index.html" ] && ok || bad "stale a.html kept"
+printf 'x' >"$SITE/f"
+"$SSG" build --incremental --quiet "$SITE" >/dev/null 2>"$ERR"
+rm "$SITE/f"; mkdir "$SITE/f"; printf 'y' >"$SITE/f/g"
+"$SSG" build --incremental --quiet "$SITE" >/dev/null 2>"$ERR"; rc=$?
+status 0
+[ -f "$SITE/dist/f/g" ] && ok || bad "file turned directory not built"
+rm -r "$SITE/f"; printf 'z' >"$SITE/f"
+"$SSG" build --incremental --quiet "$SITE" >/dev/null 2>"$ERR"; rc=$?
+status 0
+[ -f "$SITE/dist/f" ] && ok || bad "directory turned file not built"
+# A dist ssg doesn't own is never pruned.
+SITE=$ROOT_SITE/foreign
+minimal_site
+printf '# H\n' >"$SITE/index.md"
+mkdir -p "$SITE/dist" && printf keep >"$SITE/dist/mine.txt"
+"$SSG" build --incremental --quiet "$SITE" >/dev/null 2>"$ERR"
+[ -e "$SITE/dist/mine.txt" ] && ok || bad "foreign dist pruned"
+SITE=$ROOT_SITE

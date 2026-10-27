@@ -1,0 +1,9 @@
+a.b = 1
+"quoted key".c = "x\u00e9\n"
+[t.u]
+v = [[1, 2], ["x", true], []]
+w = -9223372036854775808
+x = 1_000
+[plugin.demo]
+path = "bin/x"
+enabled = false

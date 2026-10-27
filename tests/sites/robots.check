@@ -1,0 +1,43 @@
+# robots.txt: allow-all by default, [robots] to adjust, hand-written wins
+minimal_site
+printf 'x\n' >"$SITE/index.md"
+build --quiet
+status 0
+same robots.txt 'User-agent: *
+Allow: /
+'
+printf 'base_url = "https://example.com/"\n' >>"$SITE/site.toml"
+build --quiet
+same robots.txt 'User-agent: *
+Allow: /
+
+Sitemap: https://example.com/sitemap.xml
+'
+printf '[robots]\ndisallow = ["/drafts/", "/private"]\nsitemap = false\n' >>"$SITE/site.toml"
+build --quiet
+status 0
+same robots.txt 'User-agent: *
+Disallow: /drafts/
+Disallow: /private
+'
+# a hand-written file wins: silently by default, with a warning if [robots] was configured
+printf 'mine\n' >"$SITE/robots.txt"
+build
+status 0
+err_has 'robots.txt exists in the content dir; not generating one'
+same robots.txt 'mine
+'
+printf 'dist = "dist"\ntemplates = "templates"\nskeleton = "skeleton.html"\n' >"$SITE/site.toml"
+build
+status 0
+err_lacks 'robots.txt'
+same robots.txt 'mine
+'
+printf '[robots]\nenabled = false\n' >>"$SITE/site.toml"
+rm "$SITE/robots.txt"
+build --quiet
+lacks robots.txt
+printf 'dist = "dist"\ntemplates = "templates"\nskeleton = "skeleton.html"\n[robots]\ndisallow = ["x"]\n' >"$SITE/site.toml"
+build
+status 1
+err_has "'robots.disallow' must be an array of paths starting with /"

@@ -1,0 +1,17 @@
+# reading_time: 200 words or 500 CJK characters a minute; word_count adds the two
+minimal_site
+words() { i=0; while [ $i -lt "$1" ]; do printf 'w '; i=$((i + 1)); done; }
+cjk() { i=0; while [ $i -lt "$1" ]; do printf '漢'; i=$((i + 1)); done; }
+{ printf 'w=%s r=%s\n\n' '{{word_count}}' '{{reading_time}}'; words 201; } >"$SITE/latin.md"
+{ printf 'w=%s r=%s\n\n' '{{word_count}}' '{{reading_time}}'; cjk 500; } >"$SITE/han500.md"
+{ printf 'w=%s r=%s\n\n' '{{word_count}}' '{{reading_time}}'; cjk 501; } >"$SITE/han501.md"
+printf 'w={{word_count}} r={{reading_time}}\n\nこんにちは 世界 hello\n' >"$SITE/mixed.md"
+printf 'w={{word_count}} r={{reading_time}}\n' >"$SITE/tiny.md"
+build --quiet
+status 0
+# the line "w=.. r=.." itself counts as two words in pass 1 (the keys are empty then)
+contains latin/index.md 'w=203 r=2'
+contains han500/index.md 'w=502 r=2'
+contains han501/index.md 'w=503 r=2'
+contains mixed/index.md 'w=10 r=1'
+contains tiny/index.md 'w=2 r=1'

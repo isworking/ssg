@@ -1,0 +1,67 @@
+# manifest.json: written beside dist, never inside it, and rebuilds don't treat it as content.
+minimal_site
+printf -- '---\ntitle: Say "hi" page\ndate: "2026-03-05"\n---\n# A\n' >"$SITE/a.md"
+mkdir -p "$SITE/img"
+printf 12345 >"$SITE/img/x.bin"
+printf 'base_url = "https://example.com"\n' >>"$SITE/site.toml"
+build --quiet
+status 0
+src_has() { grep -qF -- "$2" "$SITE/$1" && ok || bad "$1 lacks: $2"; }
+src_has manifest.json '"schema": 1,'
+src_has manifest.json '"build_date": "2030-01-01"'
+src_has manifest.json '"base_url": "https://example.com"'
+src_has manifest.json '"url": "/a/", "source": "a.md", "title": "Say \"hi\" page", "date": "2026-03-05"'
+src_has manifest.json '{"path": "a/index.html", "format": "html", "content_type": "text/html; charset=utf-8"}'
+src_has manifest.json '{"path": "a/index.md", "format": "md", "content_type": "text/markdown; charset=utf-8"}'
+src_has manifest.json '{"path": "a/index.txt", "format": "txt", "content_type": "text/plain; charset=utf-8"}'
+src_has manifest.json '{"path": "img/x.bin", "output": "img/x.bin", "size": 5}'
+src_has manifest.json '"redirects": []'
+src_has manifest.json '"plugins": []'
+lacks manifest.json
+# A second build must not publish the first one's manifest, or change it.
+cp "$SITE/manifest.json" "$TMP/first.json"
+build --quiet
+status 0
+lacks manifest.json
+cmp -s "$TMP/first.json" "$SITE/manifest.json" && ok || bad "manifest changed between builds"
+# A stale manifest in the content root stays out of dist even when this build writes none.
+build --quiet --output "$TMP/out-s/dist"
+status 0
+[ ! -e "$TMP/out-s/dist/manifest.json" ] && ok || bad "--output published a stale manifest"
+# --output puts it beside the output dir and leaves the configured one alone.
+rm "$SITE/manifest.json"
+mkdir -p "$TMP/out-m"
+build --quiet --output "$TMP/out-m/dist"
+status 0
+[ -e "$TMP/out-m/manifest.json" ] && ok || bad "no manifest beside --output"
+[ ! -e "$SITE/manifest.json" ] && ok || bad "--output wrote the configured manifest"
+# check and list build into scratch and write none.
+"$SSG" check --quiet "$SITE" >/dev/null 2>&1
+"$SSG" list "$SITE" >/dev/null 2>&1
+[ ! -e "$SITE/manifest.json" ] && ok || bad "check/list wrote a manifest"
+# A custom path, and switching it off.
+printf 'manifest = "meta/m.json"\n' >>"$SITE/site.toml"
+build --quiet
+status 0
+[ -e "$SITE/meta/m.json" ] && [ ! -e "$SITE/manifest.json" ] && ok || bad "custom manifest path"
+sed -i.bak 's#^manifest = .*#manifest = false#' "$SITE/site.toml"
+rm -rf "$SITE/meta"
+build --quiet
+status 0
+[ ! -e "$SITE/manifest.json" ] && [ ! -e "$SITE/meta" ] && ok || bad "manifest = false still wrote"
+# A manifest inside dist is refused.
+sed -i.bak 's#^manifest = .*#manifest = "dist/m.json"#' "$SITE/site.toml"
+build --quiet
+status 1
+err_has 'is inside dist'
+# Someone else's manifest.json (a web app manifest) is not overwritten, nor skipped.
+sed -i.bak '/^manifest = /d' "$SITE/site.toml"
+printf '{"name": "pwa"}\n' >"$SITE/manifest.json"
+build --quiet
+status 0
+err_has 'ssg did not write it'
+src_has manifest.json '"name": "pwa"'
+contains manifest.json '"name": "pwa"'
+# build --json names the manifest.
+rm -f "$SITE/manifest.json"
+"$SSG" build --json "$SITE" 2>/dev/null | grep -qE '"manifest":"[^"]*/manifest.json"'  && ok || bad "build --json lacks manifest"

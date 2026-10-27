@@ -4,7 +4,7 @@ From an empty directory to a deployed site: one page, a layout template, a three
 prev/next links and a table of contents, an `.assetignore`, a local preview, and deployment to
 Cloudflare Workers or a plain static host.
 
-Every file below is complete; the outputs shown are what ssg 0.2.0 produces.
+Every file below is complete; the outputs shown are what this version of ssg produces.
 
 - [1. Install](#1-install)
 - [2. A first page](#2-a-first-page)
@@ -25,12 +25,15 @@ git clone https://github.com/isworking/ssg && cd ssg
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 cmake --install build --prefix ~/.local   # ~/.local/bin/ssg plus the man pages
-ssg --version                             # ssg 0.2.0
+ssg --version                             # ssg 1.0.0-dev (abc1234)
 ```
 
 Or skip the install and run `build/ssg` directly.
 
 ## 2. A first page
+
+`ssg init mysite` writes the files below for you (and `ssg serve mysite` previews them with live
+reload); the rest of this section builds the same thing by hand.
 
 A site is a directory with a `site.toml` in it. Three keys are required:
 
@@ -555,7 +558,9 @@ Requests for real files (`/style.css`, `/guide/index.md`) get the file. `/foo` s
 `foo.EXT` if it exists, else redirects (301) to `/foo/` when `foo/index.EXT` exists, so
 relative links resolve. Everything else is a 404.
 
-Next to `site.toml`:
+`ssg build --target cloudflare` writes a version of this worker (plus the headers and the 404 page
+in the requested format) and `wrangler.jsonc` for you; see [deploy.md](deploy.md). To write them
+by hand, next to `site.toml`:
 
 ```
 mysite/

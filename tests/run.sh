@@ -15,7 +15,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(dirname "$HERE")
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/ssg-test.XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT INT TERM
-export SOURCE_DATE_EPOCH=0  # build_date = 1970-01-01
+export SOURCE_DATE_EPOCH=1893456000  # build_date = 2030-01-01, after the fixtures' dates
 
 pass=0
 fail=0

@@ -1,11 +1,47 @@
 #pragma once
 
+#include <cctype>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+
+// "warning:" or "error:", in colour when --color (or auto on a terminal) asks for it.
+inline bool& use_color() {
+  static bool on = false;
+  return on;
+}
+inline std::string label(const char* word, const char* ansi) {
+  const std::string w = std::string(word) + ":";
+  return use_color() ? std::string("\033[") + ansi + "m" + w + "\033[0m" : w;
+}
+inline std::string warning_label() { return label("warning", "33"); }
+
+// Quotes s as a JSON string. Bytes >= 0x80 pass through, so valid UTF-8 stays valid.
+inline std::string json_str(std::string_view s) {
+  std::string out = "\"";
+  for (const unsigned char ch : s) {
+    switch (ch) {
+      case '"': out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default:
+        if (ch < 0x20) {
+          char buf[8];
+          std::snprintf(buf, sizeof buf, "\\u%04x", ch);
+          out += buf;
+        } else {
+          out += static_cast<char>(ch);
+        }
+    }
+  }
+  return out + "\"";
+}
 
 inline std::string read_file(const std::filesystem::path& path) {
   std::error_code ec;
@@ -152,5 +188,22 @@ inline std::string replace_ci_tag_inner(const std::string& html,
     out.append(inner);
   }
   out.append(html, close_at, std::string::npos);
+  return out;
+}
+
+// Percent-encodes a path for a URL, keeping / and the unreserved characters.
+inline std::string url_encode_path(std::string_view s) {
+  static const char* hex = "0123456789ABCDEF";
+  std::string out;
+  for (char c : s) {
+    const auto u = static_cast<unsigned char>(c);
+    if (std::isalnum(u) || c == '-' || c == '.' || c == '_' || c == '~' || c == '/') {
+      out += c;
+    } else {
+      out += '%';
+      out += hex[u >> 4];
+      out += hex[u & 15];
+    }
+  }
   return out;
 }

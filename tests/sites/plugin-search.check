@@ -1,0 +1,34 @@
+# ssg-plugin-search (post_build)
+SE=$(dirname "$SSG")/ssg-plugin-search
+if [ ! -x "$SE" ]; then echo "skip: no $SE (built with -DSSG_PLUGINS=OFF?)"; else
+minimal_site
+printf '[plugin.search]\npath = "%s"\n' "$SE" >>"$SITE/site.toml"
+printf -- '---\ntitle: Home "page"\ndate: "2026-01-02"\n---\n# Welcome\n\nHello   world,\nthis is *text*.\n' >"$SITE/index.md"
+printf -- '---\ntitle: Missing\n---\nnope\n' >"$SITE/404.md"
+mkdir -p "$SITE/blog"
+printf -- '---\ntitle: Post\n---\nUnicode: \303\251\303\251\303\251\303\251 and more words after it\n' >"$SITE/blog/post.md"
+build --quiet
+status 0
+contains search-index.json '{"version":1,"pages":['
+contains search-index.json '{"url":"/","title":"Home \"page\"","date":"2026-01-02","text":"Welcome ======= Hello world, this is text."}'
+contains search-index.json '"url":"/blog/post/"'
+omits search-index.json '/404/'
+# max_chars cuts on a character boundary, output moves the file, exclude drops pages
+conf() {
+  sed -i.bak '/^\[plugin/,$d' "$SITE/site.toml"
+  printf '[plugin.search]\npath = "%s"\n%s\n' "$SE" "$1" >>"$SITE/site.toml"
+}
+conf 'max_chars = 14
+output = "s/idx.json"
+exclude = ["/", "/404/"]' 
+build --quiet
+status 0
+contains s/idx.json '"text":"Unicode: '"$(printf '\303\251\303\251')"'"'
+omits s/idx.json '"url":"/"'
+lacks search-index.json
+# output may not leave dist
+conf 'output = "../x.json"' 
+build --quiet
+status 1
+err_has "plugin 'search', hook 'post_build': failed: output must be a path inside dist"
+fi

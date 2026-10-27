@@ -1,0 +1,21 @@
+# watch: the skipped-symlink note shows on the first build only, not on every rebuild.
+S=$TMP/watch-notes
+mkdir -p "$S"
+cp "$HERE/sites/links/site.toml" "$HERE/sites/links/skeleton.html" "$S/"
+printf '# Home\n\nhi\n' >"$S/index.md"
+printf 'x' >"$TMP/watch-target.txt"
+ln -s "$TMP/watch-target.txt" "$S/link.txt"
+"$SSG" watch "$S" >/dev/null 2>"$TMP/watch.err" &
+PID=$!
+sleep 1.5
+for n in 1 2; do
+  sleep 1
+  printf '# Home\n\nedit %s\n' "$n" >"$S/index.md"
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 0.5
+    grep -qF "edit $n" "$S/dist/index.html" 2>/dev/null && break
+  done
+done
+kill $PID 2>/dev/null; wait $PID 2>/dev/null
+grep -qF 'edit 2' "$S/dist/index.html" && ok || bad "watch did not rebuild"
+[ "$(grep -c 'skipping link.txt' "$TMP/watch.err")" = 1 ] && ok || bad "symlink note not exactly once: $(cat "$TMP/watch.err")"

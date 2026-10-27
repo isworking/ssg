@@ -45,7 +45,7 @@ has flags for some of them.
 | key | default | effect | `render` flag |
 | --- | --- | --- | --- |
 | `html` | `true` | raw HTML passes through; `false` escapes it and shows it as text | `--no-html` |
-| `scripts` | `false` | `false` sanitizes raw HTML (when `html` is on) and neutralizes dangerous link/image URLs ([below](#raw-html-and-sanitizing)) | `--scripts`, `--no-scripts` |
+| `scripts` | `false` | `false` allow-lists raw HTML (when `html` is on) and neutralizes dangerous link/image URLs ([below](#raw-html-and-sanitizing)) | `--scripts`, `--no-scripts` |
 | `heading_ids` | `true` | `id="slug"` on every heading | none (`--strict` turns it off) |
 | `autolinks` | `true` | bare `www.`/`http(s)://`/e-mail links; needs `extensions` | none (`--strict` turns it off) |
 | `extensions` | `true` | everything in [Extensions](#extensions); `false` is CommonMark syntax only | `--no-extensions` |
@@ -533,8 +533,9 @@ links only `a@b.com`); an unbalanced trailing `]` is excluded (as in pandoc).
 `<p>&lt;div&gt;...</p>`, inline tags show as text.
 
 `scripts = false` (default) applies to raw HTML when `html` is on, and to markdown link and
-image URLs always. It assumes content you wrote, not hostile input; it is a guard against
-accidents and pasted embeds, not a full HTML sanitizer.
+image URLs always. Raw HTML goes through an allow-list: it is meant for content you wrote or
+that others contribute, and anything not known to be harmless is shown as text. It is not a
+privacy sandbox (remote images and links still work).
 
 Markdown links and images:
 
@@ -544,17 +545,20 @@ Markdown links and images:
 
 Raw HTML is re-tokenized and rebuilt:
 
-- These tags are escaped (shown as text, not removed): `applet base embed frame frameset iframe
-  link meta noembed noframes noscript object plaintext portal script style template textarea
-  title xmp`. So a pasted `<iframe>` embed or `<style>` block shows up as source.
-- Dropped attributes: `on*` handlers, `srcdoc`, names with odd characters, any whose decoded
-  value contains `javascript:`, `vbscript:` or `livescript:` anywhere, dangerous URLs as above,
-  and `style` containing `expression(`, `behavior:` or `-moz-binding`.
+- Tags not on the allow-list are escaped (shown as text, not removed): `script`, `style`,
+  `iframe`, `object`, `form`, `input`, `svg`, `math`, custom elements and so on. So a pasted
+  embed or `<style>` block shows up as source. The list is in
+  [configuration.md](configuration.md#what-scripts--false-does-to-raw-html); extend it with
+  `allow_tags = ["my-card"]` under `[markdown]`.
+- Attributes not on the allow-list are dropped (`style` among them; `allow_attrs = ["style"]`
+  brings it back). `on*` handlers, `srcdoc`, names with odd characters, any value whose decoded
+  text contains `javascript:`, `vbscript:` or `livescript:` anywhere, and dangerous URLs as above
+  are always dropped.
 - Attribute values are re-quoted with `"` and entity-decoded then re-escaped:
   `<a href=/ok class=c>` becomes `<a href="/ok" class="c">`.
 - HTML comments are removed entirely (`<!-- more -->` vanishes).
 - An unclosed tag escapes the rest of that HTML block.
-- Everything else (`<details>`, `<kbd>`, `<svg>`, `<sup>`, `<a target>`, ...) passes.
+- Common content tags pass (`<details>`, `<kbd>`, `<sup>`, `<a target>`, `<video>`, ...).
 
 ```
 <a href="https://x" target="_blank" onclick="x()">x</a> <iframe src="https://e"></iframe>

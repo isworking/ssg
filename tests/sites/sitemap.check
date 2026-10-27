@@ -13,3 +13,15 @@ status 0
 err_has 'sitemap.xml exists in the content dir'
 same sitemap.xml 'custom
 '
+
+# 404 and noindex pages stay out of the sitemap, however they are marked
+rm "$SITE/sitemap.xml"
+printf -- '---\ntitle: "Gone"\n---\nx\n' >"$SITE/404.md"
+printf -- '---\nnoindex: "true"\n---\nx\n' >"$SITE/private.md"
+printf -- '---\nnoindex: "false"\n---\nx\n' >"$SITE/indexed.md"
+build --quiet
+status 0
+has 404/index.html
+omits sitemap.xml '/404/'
+omits sitemap.xml '/private/'
+contains sitemap.xml '/indexed/'

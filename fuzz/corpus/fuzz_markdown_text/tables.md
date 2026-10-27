@@ -1,0 +1,16 @@
+Intro paragraph
+| Name | Age | City |
+|:-----|----:|:----:|
+| Alice | 30 | Paris |
+| Bob | 4 |
+| `a\|b` | x \| y | 3 | extra |
+not a table row? yes it is
+
+after
+
+| one |
+| --- |
+
+a | b
+- | -
+> quote breaks

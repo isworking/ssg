@@ -1,0 +1,3 @@
+# from  to  [status]. Written to _redirects, and listed in manifest.json.
+/start   /create-processor/lets-start/
+/posts/* /blog/            302
