@@ -62,7 +62,7 @@ form). They may also come before it: `ssg --json build .`.
 | `--base-url <url>` | Override `base_url`. |
 | `--verbose` | One stderr line per built page and copied file. |
 | `--target <name>` | Also write the deploy files for `cloudflare`, `vercel` or `nginx` (build only; overrides `[deploy] target`). See [deploy.md](deploy.md). An unknown name is a usage error (exit 2). |
-| `--force` | Let `--target` replace adapter files that already exist and differ. Without it they are kept, with a warning. |
+| `--force` | Let `--target` regenerate adapter files that already exist, replacing any edits. Without it an existing file is kept as is. |
 | `--incremental` | Keep dist instead of emptying it: a file whose bytes are unchanged is not rewritten (its mtime survives), a changed one is replaced, and files the build no longer produces are removed. The result is the same as a clean build; the whole site is still processed in memory, so what is saved is writing and a dist that is never empty mid-build. Only for a dist ssg owns (the `.ssg-dist` marker); with `clean = false` nothing is removed. `serve` and `watch` always build this way. Plugins' `post_build` files are rewritten each time. |
 | `--quiet`, `-q` | No summary line and no notes. Warnings and errors still print. |
 | `--color auto\|always\|never` | Colour the `warning:` label. `auto` (default) colours only a terminal on stderr and not when `NO_COLOR` is set or `TERM=dumb`. |

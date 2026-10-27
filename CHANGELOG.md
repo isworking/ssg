@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1 (2026-10-27)
+
+- `--target` no longer warns on every build about adapter files you have edited (a renamed
+  worker in `wrangler.jsonc`, a customised `worker.js`) or that an older ssg wrote. Files next to
+  `site.toml` are written only when missing and then kept as they are; `--force` still
+  regenerates them.
+
 ## 1.0.0 (2026-10-27)
 
 The frozen surfaces are listed in [docs/stability.md](docs/stability.md); the upgrade steps in

@@ -303,11 +303,11 @@ or
 .Pq Pa nginx.ssg.conf , nginx.ssg-maps.conf .
 Overrides
 .Ic deploy.target .
-Files that exist and differ are kept with a warning.
+Files that already exist are left alone, so they can be edited.
 .It Fl \-force
 With
 .Fl \-target :
-replace files that exist and differ.
+regenerate those files, replacing any edits.
 .It Fl \-drafts
 Also build pages whose
 .Ic draft

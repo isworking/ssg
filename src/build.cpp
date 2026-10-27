@@ -1760,16 +1760,11 @@ BuildStats build_site(const SiteConfig& cfg, const BuildOptions& opt) {
         c.put(cfg.dist_dir / f.path, f.body);
         continue;
       }
-      // A project file is the user's once written: only --force replaces one that differs.
+      // A project file is the user's once written: renaming the worker, editing it, or a newer
+      // ssg's output are all expected to differ, so an existing one is kept without comment.
+      // Only --force replaces it.
       const fs::path dest = cfg.content_dir / f.path;
-      if (fs::exists(dest)) {
-        if (read_file(dest) == f.body) continue;
-        if (!cfg.deploy_force) {
-          c.warn(f.path + " exists and differs from what the " + cfg.deploy_target +
-                 " target would generate; kept (pass --force to replace it)");
-          continue;
-        }
-      }
+      if (fs::exists(dest) && (!cfg.deploy_force || read_file(dest) == f.body)) continue;
       write_file(dest, f.body);
       if (!opt.quiet) std::cerr << "ssg: wrote " << f.path << " for " << cfg.deploy_target << "\n";
     }

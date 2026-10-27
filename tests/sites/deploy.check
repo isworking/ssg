@@ -35,18 +35,24 @@ if command -v node >/dev/null 2>&1; then
   out=$(node "$HERE/deploy/worker_test.mjs" "$SITE/worker.js" "$DIST" 2>&1) && ok || bad "worker: $out"
 fi
 
-# a second build leaves the files alone and says nothing; a changed file is kept with a warning
+# a second build leaves the files alone and says nothing; an edited file is kept, also silently
 build --target cloudflare
 status 0
 err_lacks "exists and differs"
 printf '// mine\n' >"$SITE/worker.js"
 build --target cloudflare
 status 0
-err_has "worker.js exists and differs"
+err_lacks "worker.js"
 src_same worker.js '// mine
 '
 build --quiet --target cloudflare --force
 src_contains worker.js 'export default'
+# a renamed worker (the usual first edit) is kept too, with no warning on later builds
+sed 's/"name": "[^"]*"/"name": "my-worker"/' "$SITE/wrangler.jsonc" >"$TMP/w" && cp "$TMP/w" "$SITE/wrangler.jsonc"
+build --target cloudflare
+status 0
+err_lacks "wrangler.jsonc"
+src_contains wrangler.jsonc '"name": "my-worker"'
 
 # a hand-written _headers wins
 printf '/x\n  A: b\n' >"$SITE/_headers"

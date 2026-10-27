@@ -15,9 +15,10 @@ Choosing the format is the same on every target: `text/html` in `Accept` gets HT
 | `vercel` | `vercel.json` | next to `site.toml` |
 | `nginx` | `nginx.ssg.conf`, `nginx.ssg-maps.conf` | next to `site.toml` |
 
-Files next to `site.toml` are yours once written: ssg never replaces one whose content differs
-(it warns and keeps it) unless you pass `--force`. Files that match what ssg would write are left
-alone silently. The adapter files are not published. The files in dist are regenerated each build;
+Files next to `site.toml` are written only when they don't exist yet; after that they are yours.
+Edit them freely (give the worker its real name in `wrangler.jsonc`, say): ssg keeps an existing
+file without comment, even when a newer ssg would write something else. `--force` regenerates
+them, replacing your edits. The adapter files are not published. The files in dist are regenerated each build;
 a hand-written `_headers` in the content dir wins, with a warning.
 
 ## Headers
